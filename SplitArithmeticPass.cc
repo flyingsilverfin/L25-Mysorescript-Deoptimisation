@@ -60,29 +60,41 @@ struct SplitArithmeticPass : FunctionPass, InstVisitor<SplitArithmeticPass>
 
 
 
-  void visitCallInst(CallInst &CI) {
-
-  }
-
-
+  /*
+	Idea:
+		1. Find all contiguous sets of 'call'ing arithmetic instructions
+		2. Split before and after contigous blocks
+		3. Create a slow and a fast path
+			Fast path needs to bit shift all arguments since we know they're 61 bit ints
+		4. Confirm all values are actually integers with some bit manipulation
+		5. Create branch conditional on all being integers to fast or slow path
+  */
+  std::map<CallInst*, CallInst*> arithmetic_blocks;
   bool runOnFunction(Function &F) override {
 
-    // The visit method is inherited by InstVisitor.  This will call each
-    // of the visit*() methods, allowing individual functions to be inspected.
-//    visit(F);
 
     for (auto &BB : F) {
 
+	  CallInst* arithmetic_block_start;
       for (auto &I : BB) {
-			 llvm::errs() << "hi" << '\n';
-  	  }
+		if (CallInst* ci = dyn_cast<CallInst*>(&I)) {
+			// we have found a "first" callsite
+			if (!arithmetic_block_start) {
+				arithmetic_block_start = ci;
+			}
+			// if its the second, third.. etc. we just want the first that is not arithmetic now
 
+		} else {
+			// we want to split again before this instruction
+			arithmetic_blocks[arithmetic_block_start] = dyn_cast<CallInst*>(&I);	
+			arithmetic_block_start = nullptr;	// reset now this sequence been saved!
+		}
+  	  }
 	}
 
-    // Note that we *must not* modify the IR in either of the previous methods,
-    // because doing so will invalidate the iterators that we're using to
-    // explore it.  After we've finished using the iterators, it is safe to do
-    // the modifications.
+	// at this point, we should have all continuous sequences of call arithmetic
+	
+	
    
     return false;
   }
@@ -90,6 +102,32 @@ struct SplitArithmeticPass : FunctionPass, InstVisitor<SplitArithmeticPass>
 
 
 };
+
+/*
+helper 
+https://stackoverflow.com/questions/11686951/how-can-i-get-function-name-from-callinst-in-llvm
+*/
+StringRef get_function_name(CallInst &call)
+{
+    Function *fun = call.getCalledFunction();
+    if (fun) 
+        return fun->getName(); // inherited from llvm::Value
+    else
+        return StringRef("indirect call");
+}
+
+/*
+  Helper
+*/
+
+bool isArithmeticCall(CallInst &c) {
+	StringRef function_name = get_function_name(c);
+	return (function_name.equals_lower(StringRef("mysoreScriptAdd") ||
+		function_name.equals_lower(StringRef("mysoreScriptSub") ||
+		function_name.equals_lower(StringRef("mysoreScriptDiv") ||
+		function_name.equals_lower(StringRef("mysoreScriptMult"));
+}
+
 
 char SplitArithmeticPass::ID;
 
