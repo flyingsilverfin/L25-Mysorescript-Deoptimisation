@@ -116,7 +116,7 @@ ClosureInvoke Compiler::Context::compile()
 
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
-	//M->dump();
+	M->dump();
 
 	// Run the passes to optimise the function / module.
 	FPM.run(*F);
@@ -682,6 +682,10 @@ Value *compileCompare(Compiler::Context &c, CmpInst::Predicate Op,
 Value *compileBinaryOp(Compiler::Context &c, Value *LHS, Value *RHS,
 		Instruction::BinaryOps Op, const char *slowCallFnName)
 {
+
+/*
+
+
 	// Get the two operands as integer values
 	Value *LHSInt = getAsSmallInt(c, LHS);
 	Value *RHSInt = getAsSmallInt(c, RHS);
@@ -731,6 +735,15 @@ Value *compileBinaryOp(Compiler::Context &c, Value *LHS, Value *RHS,
 	result->addIncoming(objResult, obj);
 	// Return the result
 	return result;
+
+*/
+
+	// Call the function that handles the object case
+	Value *objResult = c.B.CreateCall(c.M->getOrInsertFunction(slowCallFnName,
+				c.ObjPtrTy, LHS->getType(), RHS->getType()),
+			{LHS, RHS});
+	
+	return objResult;
 }
 } // End anonymous namespace
 

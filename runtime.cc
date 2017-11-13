@@ -726,19 +726,36 @@ extern "C"
 {
 Obj mysoreScriptAdd(Obj lhs, Obj rhs)
 {
-	return compiledMethodForSelector(lhs, add)(lhs, add, rhs);
+	// if it's a number embedded in ptr
+	if (isInteger(lhs)) {
+		return createSmallInteger(getInteger(lhs) + getInteger(rhs));
+	} else {
+		return compiledMethodForSelector(lhs, add)(lhs, add, rhs);
+	}
 }
 Obj mysoreScriptSub(Obj lhs, Obj rhs)
 {
-	return compiledMethodForSelector(lhs, sub)(lhs, sub, rhs);
+	if (isInteger(lhs)) {
+		return createSmallInteger(getInteger(lhs) - getInteger(rhs));
+	} else {
+		return compiledMethodForSelector(lhs, sub)(lhs, sub, rhs);
+	}
 }
 Obj mysoreScriptMul(Obj lhs, Obj rhs)
 {
-	return compiledMethodForSelector(lhs, mul)(lhs, mul, rhs);
+	if (isInteger(lhs)) {
+		return createSmallInteger(getInteger(lhs) * getInteger(rhs));
+	} else {
+		return compiledMethodForSelector(lhs, mul)(lhs, mul, rhs);
+	}
 }
 Obj mysoreScriptDiv(Obj lhs, Obj rhs)
 {
-	return compiledMethodForSelector(lhs, StaticSelectors::div)(lhs, StaticSelectors::div, rhs);
+	if (isInteger(lhs)) {
+ 		return createSmallInteger(getInteger(lhs) / getInteger(rhs));
+	} else {
+		return compiledMethodForSelector(lhs, StaticSelectors::div)(lhs, StaticSelectors::div, rhs);
+	}
 }
 CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
 {
@@ -752,7 +769,13 @@ CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
 	}
 	// If it's a small integer, then use the small integer class, otherwise
 	// follow the class pointer.
-	Class *cls = isInteger(obj) ? &SmallIntClass : obj->isa;
+	Class *cls;
+	if (isInteger(obj)) {
+		cls = &SmallIntClass;
+	} else {
+		cls = obj->isa;
+	}
+	//Class *cls = isInteger(obj) ? &SmallIntClass : obj->isa;
 	Method *mth = methodForSelector(cls, sel);
 	// If the method doesn't exist, return the invalid method function,
 	// otherwise return the function that we've just looked up.

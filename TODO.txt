@@ -1,0 +1,28 @@
+Goal:
+* Replace checks in compileBinaryOp that happen for each binary op and do them once in a sequence of operations
+* Add an LLVM pass to identify sequence of "arithemetic" implemented as a sequence of functions, replace it with real arithmetic operations (eg mul, add etc.)
+* add a check at the start of this sequence to make sure all arguments are integers
+* if not, exit compiled code and return to interpreter (how's this gonna work?)
+
+
+ideas
+* in the AST, find nodes that contain only arithmetic, and tag them somehow
+  * these will be Expression types
+  * when compiling an expression with a tag get all vars/values and check they're all integers. If yes, then compile without checks
+  * If any of them are NOT integers, exit to a slow path (?)
+
+
+
+
+methods of note
+compiler.cc  ClosureInvoke Compiler::Context::compile()
+
+compiler.cc Value *ClosureDecl::compileExpression(Compiler::Context &c)
+  Value *Call::compileExpression(Compiler::Context &c)
+  Value *VarRef::compileExpression(Compiler::Context &c) 
+  Value *compileBinaryOp(Compiler::Context &c, Value *LHS, Value *RHS, Instruction::BinaryOps Op, const char *slowCallFnName)
+
+ast.hh
+  [class Expression : public Statement] void compile(Compiler::Context &c) override final
+
+
