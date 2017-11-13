@@ -1,0 +1,9 @@
+func test_add() {
+	var x = 1;
+	var y = 2;
+	var z = 3;
+	
+	return x+y+z;
+};
+
+test_add().dump();

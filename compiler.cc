@@ -110,9 +110,13 @@ ClosureInvoke Compiler::Context::compile()
 	llvm::legacy::FunctionPassManager FPM(M.get());
 	PassManager MPM;
 	PassManagerBuilder Builder;
+
 	Builder.OptLevel = 2;
 	Builder.populateFunctionPassManager(FPM);
 	Builder.populateModulePassManager(MPM);
+
+	addSplitArithmeticPass(Builder, MPM);
+
 
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
@@ -124,7 +128,7 @@ ClosureInvoke Compiler::Context::compile()
 
 	// If you want to see the LLVM IR after optimisation, uncomment the
 	// following line:
-	//M->dump();
+	M->dump();
 
 	std::string FunctionName = F->getName();
 	std::string err;

@@ -726,6 +726,7 @@ extern "C"
 {
 Obj mysoreScriptAdd(Obj lhs, Obj rhs)
 {
+
 	// if it's a number embedded in ptr
 	if (isInteger(lhs)) {
 		return createSmallInteger(getInteger(lhs) + getInteger(rhs));

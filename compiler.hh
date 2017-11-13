@@ -6,6 +6,8 @@
 #include <llvm/IR/LLVMContext.h>
 #include <unordered_map>
 
+#include "SplitArithmeticPass.cc"
+
 namespace Compiler 
 {
 	using MysoreScript::Obj;
