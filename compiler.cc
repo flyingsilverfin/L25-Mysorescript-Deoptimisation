@@ -111,24 +111,27 @@ ClosureInvoke Compiler::Context::compile()
 	PassManager MPM;
 	PassManagerBuilder Builder;
 
-	Builder.OptLevel = 2;
+	Builder.addExtension(PassManagerBuilder::EP_LoopOptimizerEnd, addSplitArithmeticPass);
+
+	Builder.OptLevel = 1;
 	Builder.populateFunctionPassManager(FPM);
 	Builder.populateModulePassManager(MPM);
 
-	addSplitArithmeticPass(Builder, MPM);
+	// addSplitArithmeticPass(Builder, MPM);
 
 
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
-	M->dump();
+	//M->dump();
 
 	// Run the passes to optimise the function / module.
-	FPM.run(*F);
 	MPM.run(*M);
+	FPM.run(*F);
+
 
 	// If you want to see the LLVM IR after optimisation, uncomment the
 	// following line:
-	M->dump();
+	//M->dump();
 
 	std::string FunctionName = F->getName();
 	std::string err;
@@ -741,6 +744,9 @@ Value *compileBinaryOp(Compiler::Context &c, Value *LHS, Value *RHS,
 	return result;
 
 */
+
+	LHS = getAsObject(c, LHS);
+	RHS = getAsObject(c, RHS);
 
 	// Call the function that handles the object case
 	Value *objResult = c.B.CreateCall(c.M->getOrInsertFunction(slowCallFnName,
