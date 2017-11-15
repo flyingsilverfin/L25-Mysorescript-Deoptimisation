@@ -81,6 +81,7 @@ struct SplitArithmeticPass : FunctionPass, InstVisitor<SplitArithmeticPass>
   	/* TODO CORNER CASE: U could use value twice? */
   	for (User *U : CI.users()) {
   		use_counts[&CI]++;
+		llvm::errs() << "Found: " << CI << " **at** " << *U << '\n';
   	}
   }
 
@@ -107,9 +108,9 @@ llvm::errs() << F << '\n';
   	visit(F);
   	// we now have the number of times each CallInst return value is used... // CONFIRMED WORKS
   	
-//  	for (auto &entry : use_counts) {
-//  		llvm::errs() << entry.first << "    " << entry.second <<'\n';
-// 	}
+  	for (auto &entry : use_counts) {
+  		llvm::errs() << entry.first << "    " << entry.second <<'\n';
+ 	}
   	
   	  
     for (auto &BB : F) {
@@ -118,6 +119,9 @@ llvm::errs() << F << '\n';
   	  std::set<Value *> args_to_check;
   	  bool end_contiguous_block = false;
   	  
+
+	  Value *prev_result;
+	  Value *prev_count;
       for (auto &I : BB) {
 		CallInst *CI = dyn_cast<CallInst>(&I);
 		
@@ -150,15 +154,29 @@ llvm::errs() << F << '\n';
 				}
 				
 			} else {
-				// we know these are two binary operators
+llvm::errs() << *CI << '\n';
+				// we know these are binary operators
 				Value *arg1 = CI->getArgOperand(0);
 				Value *arg2 = CI->getArgOperand(1);
 				std::vector<Value *> these_args;
 				these_args.push_back(arg1);
 				these_args.push_back(arg2);
 				
+
+/*
+
+	The problem for stacking neighboring script calls is here - we need to check if the result of the current call has all COUNT of its uses satisfied in the contiguous block of math
+
+	
+
+*/
+
+
+
+
 				for (auto &arg : these_args) {
 					auto count = use_counts.find(arg);
+					auto end = use_counts.end();
 					// if this argument value is in use_counts
 					if (count != use_counts.end()) {
 						count->second--; //decrement the value
@@ -167,13 +185,12 @@ llvm::errs() << F << '\n';
 							end_contiguous_block = true;
 						}
 					} else {	// argument not in use_counts
-						if (dyn_cast<Operator>(arg2)->getOpcode() != 46) {	// if not inttoptr
+						if (dyn_cast<Operator>(arg)->getOpcode() != 46) {	// if not inttoptr
 							args_to_check.insert(arg);			
 						} // else it's a constant and we can ignore!
 					}
 					
 				}
-				if (end_contiguous_block) { continue; }
 			
 				// here we have a second or third or fourth contiguous arithmetic instruction
 				// if an arg is a Value in use_counts, it is computed so decrement it. If this 0 then continue
@@ -182,7 +199,7 @@ llvm::errs() << F << '\n';
 				
 			}
 		} 
-		if (end_contiguous_block || arithmetic_block_start)  {	// if we previously had a sequence of arithmetic, it is now terminated
+		if (end_contiguous_block || (arithmetic_block_start && !isArithmeticCall(*CI)))  {	// if we previously had a sequence of arithmetic, it is now terminated
 			
 			// copy the arg set to pair and save it in the arithmetic blocks
 			std::pair<std::set<Value *>, Instruction*> p;
@@ -202,13 +219,14 @@ llvm::errs() << F << '\n';
 	
 	 	 
 //	 	 std::map<CallInst*, std::pair<std::set<Value*>,Instruction*> > arithmetic_blocks
-	 	 
-//  	for (auto &entry : arithmetic_blocks) {
-// 		llvm::errs() << *entry.first << "    " << *entry.second.second << "    " << entry.second.first.size() <<'\n';
-//  		for (auto &value : entry.second.first) {
-// 			llvm::errs() << "  " << value << '\n';
-//		  }
-//  	}
+// keeping these in breaks something? some implicit type conversion that sticks around
+// LOL - 2AM	 	 
+  	for (auto &entry : arithmetic_blocks) {
+ 		llvm::errs() << *entry.first << "    " << *entry.second.second << "    " << entry.second.first.size() <<'\n';
+  		for (auto &value : entry.second.first) {
+ 			llvm::errs() << "  " << value << '\n';
+		  }
+  	}
   	
 
 
