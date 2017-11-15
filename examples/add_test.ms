@@ -13,17 +13,21 @@
 *};
 *
 *
-*	NO CONSTANTS, NO DEAD CODE!
 */
+
 func test_add_2() {
-	var i = 1;
+	var i = foo();
 	var sum = 1;
-	while ( i < 900000000 ) {
+	while ( i < 10000000 ) {
 		var x = (sum) / (i);
 		sum = sum + x;
-		i = i + 1;
+		i = i + foo();
 	}
 	return sum;
+};
+
+func foo() {
+	return 5;
 };
 	
 		
