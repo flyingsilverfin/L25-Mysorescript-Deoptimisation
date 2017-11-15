@@ -18,7 +18,7 @@
 func test_add_2() {
 	var i = 1;
 	var sum = 1;
-	while ( i < 3 ) {
+	while ( i < 10000000000 ) {
 		var x = (sum) / (i);
 		sum = sum + x;
 		i = i + i;

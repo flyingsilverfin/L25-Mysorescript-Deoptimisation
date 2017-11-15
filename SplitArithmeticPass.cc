@@ -294,7 +294,7 @@ llvm::errs() << F << '\n';
 		IRBuilder<> original_builder(bb);
 		IRBuilder<> fast_builder(fast_bb);
 
-		// TODO logic for AND'ing all the args to check together!
+		// logic to check if all required args for the arithmetic block are ints
 		Value *anded = ConstantInt::get(Type::getInt64Ty(*c), 1);
 		for (Value *v : args_to_check) {
 			auto val = original_builder.CreatePtrToInt(v, Type::getInt64Ty(*c));
@@ -304,6 +304,7 @@ llvm::errs() << F << '\n';
 		Value *are_all_ints = original_builder.CreateICmpEQ(anded, ConstantInt::get(Type::getInt64Ty(*c), 1));
 
 
+// testing constant 1
 //Value *are_all_ints = ConstantInt::get(*c, llvm::APInt(/*nbits*/1, 1, /*bool*/false));
 
 //llvm::errs() << "type " << are_all_ints->getType()->isIntegerTy(1) << '\n';		
