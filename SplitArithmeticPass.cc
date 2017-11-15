@@ -81,7 +81,7 @@ struct SplitArithmeticPass : FunctionPass, InstVisitor<SplitArithmeticPass>
   	/* TODO CORNER CASE: U could use value twice? */
   	for (User *U : CI.users()) {
   		use_counts[&CI]++;
-		llvm::errs() << "Found: " << CI << " **at** " << *U << '\n';
+//		llvm::errs() << "Found: " << CI << " **at** " << *U << '\n';
   	}
   }
 
@@ -108,9 +108,9 @@ llvm::errs() << F << '\n';
   	visit(F);
   	// we now have the number of times each CallInst return value is used... // CONFIRMED WORKS
   	
-  	for (auto &entry : use_counts) {
-  		llvm::errs() << entry.first << "    " << entry.second <<'\n';
- 	}
+// 	for (auto &entry : use_counts) {
+//  		llvm::errs() << entry.first << "    " << entry.second <<'\n';
+// 	}
   	
   	  
     for (auto &BB : F) {
@@ -122,7 +122,7 @@ llvm::errs() << F << '\n';
 
       for (auto &I : BB) {
 		CallInst *CI = dyn_cast<CallInst>(&I);
-llvm::errs() << I << '\n';
+// llvm::errs() << I << '\n';
 		if (CI && isArithmeticCall(CI)) {
 
 
@@ -157,7 +157,7 @@ llvm::errs() << I << '\n';
 				}
 				
 			} else {
-llvm::errs() << *CI << '\n';
+// llvm::errs() << *CI << '\n';
 				// we know these are binary operators
 				Value *arg1 = CI->getArgOperand(0);
 				Value *arg2 = CI->getArgOperand(1);
@@ -195,11 +195,11 @@ llvm::errs() << *CI << '\n';
 			//   NOT quite sure this 100% works...
 			Instruction *computed = CI;
 			BasicBlock::iterator it(computed);
-llvm::errs() << "Iterator " << *it << '\n';
+// llvm::errs() << "Iterator " << *it << '\n';
 			uint32_t num_required = use_counts[computed];
 			while (!end_contiguous_block) {	// either toggle this or break out manually
 				Instruction *next = &*it;
-llvm::errs() << "checking forward instruction: " << *next << '\n';
+// llvm::errs() << "checking forward instruction: " << *next << '\n';
 				CallInst *next_call = dyn_cast<CallInst>(next);
 				if (next_call && isArithmeticCall(next_call)) {
 					Value *arg1 = next_call->getArgOperand(0);
@@ -260,12 +260,12 @@ llvm::errs() << "checking forward instruction: " << *next << '\n';
 //	 	 std::map<CallInst*, std::pair<std::set<Value*>,Instruction*> > arithmetic_blocks
 // keeping these in breaks something? some implicit type conversion that sticks around
 // LOL - 2AM	 	 
-  	for (auto &entry : arithmetic_blocks) {
- 		llvm::errs() << *entry.first << "    " << *entry.second.second << "    " << entry.second.first.size() <<'\n';
-  		for (auto &value : entry.second.first) {
- 			llvm::errs() << "  " << value << '\n';
-		  }
-  	}
+//  	for (auto &entry : arithmetic_blocks) {
+// 		//llvm::errs() << *entry.first << "    " << *entry.second.second << "    " << entry.second.first.size() <<'\n';
+//  		for (auto &value : entry.second.first) {
+// 			llvm::errs() << "  " << value << '\n';
+//		  }
+//  	}
   	
 
 
@@ -289,16 +289,27 @@ llvm::errs() << "checking forward instruction: " << *next << '\n';
 		BasicBlock *rejoin_bb = slow_bb->splitBasicBlock(after_calls, "rejoin");	// splits after sequence of math
 		BasicBlock *fast_bb = BasicBlock::Create(*c, "fast", &F, rejoin_bb); // empty fast path for now
 
+		bb->getTerminator()->eraseFromParent();	// we will insert some checks, then add branch
+
 		IRBuilder<> original_builder(bb);
 		IRBuilder<> fast_builder(fast_bb);
 
 		// TODO logic for AND'ing all the args to check together!
-		Value *are_all_ints = ConstantInt::get(*c, llvm::APInt(/*nbits*/1, 1, /*bool*/false));
+		Value *anded = ConstantInt::get(Type::getInt64Ty(*c), 1);
+		for (Value *v : args_to_check) {
+			auto val = original_builder.CreatePtrToInt(v, Type::getInt64Ty(*c));
+			anded = original_builder.CreateAnd(anded, val);
+		}
+
+		Value *are_all_ints = original_builder.CreateICmpEQ(anded, ConstantInt::get(Type::getInt64Ty(*c), 1));
+
+
+//Value *are_all_ints = ConstantInt::get(*c, llvm::APInt(/*nbits*/1, 1, /*bool*/false));
 
 //llvm::errs() << "type " << are_all_ints->getType()->isIntegerTy(1) << '\n';		
 
 		// replace unconditional branch with conditional branch in original block
-		bb->getTerminator()->eraseFromParent();
+
 		original_builder.CreateCondBr(are_all_ints, fast_bb, slow_bb); // cond, true, false
 
 		// create PHI node in rejoin_bb
@@ -358,7 +369,7 @@ llvm::errs() << "checking forward instruction: " << *next << '\n';
 			} else if (arg_dependencies.count(lhs) > 0) { // if its internal arg, get it from remapping
 				lhs_int = arg_dependencies[lhs];
 			} else {	// else it is a constant
-				//Instruction *
+				//Instruction  constants
 				lhs_int = lhs;
 			}
 			
@@ -367,7 +378,7 @@ llvm::errs() << "checking forward instruction: " << *next << '\n';
 			} else if (arg_dependencies.count(rhs) > 0) {	// if its internal arg, get it from remapping
 				rhs_int = arg_dependencies[rhs];
 			} else {	// else it is a constant
-				/*TODO*/
+				//TODO constants
 				rhs_int = rhs;
 			}			
 
@@ -442,7 +453,7 @@ llvm::errs() << "checking forward instruction: " << *next << '\n';
 			users.push_back(U);	// not allowed to modify directly in iterator it seems - invalidates iterator
 		}
 		for (auto &U : users) {	// do modification here
-			llvm::errs() << "Replacing with phi results: " <<  *U << '\n';
+//llvm::errs() << "Replacing with phi results: " <<  *U << '\n';
 			if (U != phi) {
 				U->replaceUsesOfWith(slow_last_instruction, phi);
 			}
@@ -487,7 +498,6 @@ llvm::errs() << "checking forward instruction: " << *next << '\n';
 	}
 
 	bool isMysoreAdd(CallInst *c) {
-//llvm::errs() << "mysoreadd?: " << c << '\n';
 		Function *fun = c->getCalledFunction();
 		if (!fun) {
 			return false;
