@@ -371,7 +371,7 @@ llvm::errs() << F << '\n';
 				lhs_int = arg_dependencies[lhs];
 			} else {	// else it is a constant
 				//Instruction  constants
-				lhs_int = lhs;
+				lhs_int = fast_builder.CreatePtrToInt(lhs,Type::getInt64Ty(*c));
 			}
 			
 			if (arg_map.count(rhs) > 0) { // get from map if is external arg
@@ -380,7 +380,7 @@ llvm::errs() << F << '\n';
 				rhs_int = arg_dependencies[rhs];
 			} else {	// else it is a constant
 				//TODO constants
-				rhs_int = rhs;
+				rhs_int = fast_builder.CreatePtrToInt(rhs,Type::getInt64Ty(*c));
 			}			
 
 //llvm::errs() << "  " << lhs->getType() << "  " << rhs->getType() << '\n';
