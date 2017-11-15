@@ -16,8 +16,8 @@
 *	NO CONSTANTS, NO DEAD CODE!
 */
 func test_add_2() {
-	var i = 1;
-	var sum = 1;
+	var i = 0;
+	var sum = 0;
 	while ( i < 3 ) {
 		var x = (sum) / (i);
 		sum = sum + x;

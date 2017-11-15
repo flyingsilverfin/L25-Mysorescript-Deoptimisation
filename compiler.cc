@@ -113,7 +113,7 @@ ClosureInvoke Compiler::Context::compile()
 
 	Builder.addExtension(PassManagerBuilder::EP_LoopOptimizerEnd, addSplitArithmeticPass);
 
-	Builder.OptLevel = 1;
+	Builder.OptLevel = 2;
 	Builder.populateFunctionPassManager(FPM);
 	Builder.populateModulePassManager(MPM);
 
