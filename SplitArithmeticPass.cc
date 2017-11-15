@@ -118,14 +118,17 @@ llvm::errs() << F << '\n';
       CallInst* arithmetic_block_start = nullptr;
   	  std::set<Value *> args_to_check;
   	  bool end_contiguous_block = false;
-  	  
+  	  std::set<Value *> computed_this_block;
 
-	  Value *prev_result;
-	  Value *prev_count;
       for (auto &I : BB) {
 		CallInst *CI = dyn_cast<CallInst>(&I);
-		
-		if (CI && isArithmeticCall(*CI)) {
+llvm::errs() << I << '\n';
+		if (CI && isArithmeticCall(CI)) {
+
+
+
+
+
 			// if we have found a "first" math callsite
 			if (!arithmetic_block_start) {
 				arithmetic_block_start = CI;
@@ -161,22 +164,8 @@ llvm::errs() << *CI << '\n';
 				std::vector<Value *> these_args;
 				these_args.push_back(arg1);
 				these_args.push_back(arg2);
-				
-
-/*
-
-	The problem for stacking neighboring script calls is here - we need to check if the result of the current call has all COUNT of its uses satisfied in the contiguous block of math
-
-	
-
-*/
-
-
-
-
 				for (auto &arg : these_args) {
 					auto count = use_counts.find(arg);
-					auto end = use_counts.end();
 					// if this argument value is in use_counts
 					if (count != use_counts.end()) {
 						count->second--; //decrement the value
@@ -198,8 +187,57 @@ llvm::errs() << *CI << '\n';
 				// if there's an arg that is is not previously computed, add it to the set of Values to check
 				
 			}
+
+
+
+			// in either case, we end contiguous block if the argument computed here
+			// does not have all its references used up in the following block of arithmetic calls
+			//   NOT quite sure this 100% works...
+			Instruction *computed = CI;
+			BasicBlock::iterator it(computed);
+llvm::errs() << "Iterator " << *it << '\n';
+			uint32_t num_required = use_counts[computed];
+			while (!end_contiguous_block) {	// either toggle this or break out manually
+				Instruction *next = &*it;
+llvm::errs() << "checking forward instruction: " << *next << '\n';
+				CallInst *next_call = dyn_cast<CallInst>(next);
+				if (next_call && isArithmeticCall(next_call)) {
+					Value *arg1 = next_call->getArgOperand(0);
+					Value *arg2 = next_call->getArgOperand(1);
+
+					if (arg1 == computed) {
+						num_required--;
+					} 
+					if (arg2 == computed) {
+						num_required--;
+					}
+
+				} else {
+					if (num_required > 0) {
+						end_contiguous_block = true;
+					}
+					break;	// stop checking forward at end of arithmetic block
+				}
+				it++;
+			}
+
+
+/*
+
+			// here we've got the last K results computed in a sequence of arithmetic
+			// we need to terminate this block if any of their results are used after the current instruction
+			for (auto &value : computed_this_block) {
+				auto count = use_counts.find(value);
+				if (count->second > 0) {
+					end_contiguous_block = true;
+				}
+			}
+			computed_this_block.insert(CI); // keep track of vars generated this block
+*/
+
+
 		} 
-		if (end_contiguous_block || (arithmetic_block_start && !isArithmeticCall(*CI)))  {	// if we previously had a sequence of arithmetic, it is now terminated
+		if (end_contiguous_block || (arithmetic_block_start && !isArithmeticCall(CI)))  {	// if we previously had a sequence of arithmetic, it is now terminated
 			
 			// copy the arg set to pair and save it in the arithmetic blocks
 			std::pair<std::set<Value *>, Instruction*> p;
@@ -211,6 +249,7 @@ llvm::errs() << *CI << '\n';
 			arithmetic_block_start = nullptr;
 			end_contiguous_block = false;
 			args_to_check.clear();
+			computed_this_block.clear();
 			
 		}
   	  }
@@ -335,13 +374,13 @@ llvm::errs() << *CI << '\n';
 //llvm::errs() << "  " << lhs->getType() << "  " << rhs->getType() << '\n';
 //llvm::errs() << "  " << lhs_int->getType() << "  " << rhs_int->getType() << '\n';
 			BinaryOperator *op;
-			if (isMysoreAdd(*ci)) {
+			if (isMysoreAdd(ci)) {
 				op = BinaryOperator::Create(Instruction::Add, lhs_int, rhs_int, "add", fast_bb);
-			} else if (isMysoreSub(*ci)) {
+			} else if (isMysoreSub(ci)) {
 				op = BinaryOperator::Create(Instruction::Sub, lhs_int, rhs_int, "sub", fast_bb);
-			} else if (isMysoreMul(*ci)) {
+			} else if (isMysoreMul(ci)) {
 				op = BinaryOperator::Create(Instruction::Mul, lhs_int, rhs_int, "mul", fast_bb);
-			} else if (isMysoreDiv(*ci)) {
+			} else if (isMysoreDiv(ci)) {
 				op = BinaryOperator::Create(Instruction::SDiv, lhs_int, rhs_int, "div", fast_bb); //SDIV = signed div?
 			} else {
 				llvm::errs() << "Some unknown call that isn't add, sub, mult, or div has made it in here!" << '\n';
@@ -424,9 +463,12 @@ llvm::errs() << *CI << '\n';
 	helper 
 	https://stackoverflow.com/questions/11686951/how-can-i-get-function-name-from-callinst-in-llvm
 	*/
-	StringRef get_function_name(CallInst &call)
+	StringRef get_function_name(CallInst *call)
 	{
-		Function *fun = call.getCalledFunction();
+		if (call == nullptr) {
+			return StringRef("nullptr!");	
+		}
+		Function *fun = call->getCalledFunction();
 		if (fun) 
 		    return fun->getName(); // inherited from llvm::Value
 		else
@@ -437,41 +479,45 @@ llvm::errs() << *CI << '\n';
 	  Helpers
 	*/
 
-	bool isArithmeticCall(CallInst &ci) {
+	bool isArithmeticCall(CallInst *ci) {
+		if (ci == nullptr) {
+			return false;	
+		}
 		return  isMysoreAdd(ci) || isMysoreSub(ci) || isMysoreDiv(ci) || isMysoreMul(ci);
 	}
 
-	bool isMysoreAdd(CallInst &c) {
-		Function *fun = c.getCalledFunction();
+	bool isMysoreAdd(CallInst *c) {
+//llvm::errs() << "mysoreadd?: " << c << '\n';
+		Function *fun = c->getCalledFunction();
 		if (!fun) {
 			return false;
 		}
-		StringRef function_name = get_function_name(c);
+		StringRef function_name = fun->getName();
 		return function_name.equals(StringRef("mysoreScriptAdd"));
 	}
 
-	bool isMysoreSub(CallInst &c) {
-		Function *fun = c.getCalledFunction();
+	bool isMysoreSub(CallInst *c) {
+		Function *fun = c->getCalledFunction();
 		if (!fun) {
 			return false;
 		}
-		StringRef function_name = get_function_name(c);
+		StringRef function_name = fun->getName();
 		return function_name.equals(StringRef("mysoreScriptSub"));
 	}
-	bool isMysoreDiv(CallInst &c) {
-		Function *fun = c.getCalledFunction();
+	bool isMysoreDiv(CallInst *c) {
+		Function *fun = c->getCalledFunction();
 		if (!fun) {
 			return false;
 		}
-		StringRef function_name = get_function_name(c);
+		StringRef function_name = fun->getName();
 		return function_name.equals(StringRef("mysoreScriptDiv"));
 	}
-	bool isMysoreMul(CallInst &c) {
-		Function *fun = c.getCalledFunction();
+	bool isMysoreMul(CallInst *c) {
+		Function *fun = c->getCalledFunction();
 		if (!fun) {
 			return false;
 		}
-		StringRef function_name = get_function_name(c);
+		StringRef function_name = fun->getName();
 		return function_name.equals(StringRef("mysoreScriptMul"));
 	}
 
