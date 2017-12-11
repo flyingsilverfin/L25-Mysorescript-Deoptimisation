@@ -649,6 +649,10 @@ namespace AST
 	 */
 	struct Call : public Expression
 	{
+		
+		MysoreScript::CompiledMethod cachedMethod; // cached function pointer for this call site
+		MysoreScript::Selector cachedSelector; // selector matching this function pointer
+	    MysoreScript::Class *cachedClass; // class the object isa type of
 		/**
 		 * The callee, if this is calling a closure, or the object that is
 		 * having a method invoked on it if it is a method invocation.

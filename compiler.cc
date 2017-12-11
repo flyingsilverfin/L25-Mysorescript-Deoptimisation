@@ -131,7 +131,7 @@ ClosureInvoke Compiler::Context::compile()
 
 	// If you want to see the LLVM IR after optimisation, uncomment the
 	// following line:
-	//M->dump();
+	M->dump();
 
 	std::string FunctionName = F->getName();
 	std::string err;

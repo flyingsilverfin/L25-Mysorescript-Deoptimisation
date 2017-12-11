@@ -271,6 +271,10 @@ Obj mysoreScriptMul(Obj lhs, Obj rhs);
  * are not small (embedded in a pointer) integers.
  */
 Obj mysoreScriptDiv(Obj lhs, Obj rhs);
+
+// helper after refactoring
+Class *getClassFor(Obj obj);
+
 /**
  * Look up the compiled method to call for a specific selector.  This is called
  * by compiled code to perform method lookups.  If a method has not yet been

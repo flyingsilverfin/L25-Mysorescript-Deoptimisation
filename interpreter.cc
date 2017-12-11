@@ -447,8 +447,19 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 	// Look up the selector and method to call
 	Selector sel = lookupSelector(*method.get());
 	assert(sel);
-	CompiledMethod mth = compiledMethodForSelector(obj, sel);
-	assert(mth);
+
+	CompiledMethod mth;
+	Class *cls = getClassFor(obj);
+	if (cachedMethod != nullptr && sel == cachedSelector &&  cls == cachedClass) {
+		mth = cachedMethod;
+	} else {
+		mth = compiledMethodForSelector(obj, sel);
+		cachedMethod = mth;
+		cachedSelector = sel;
+		cachedClass = cls;
+	}
+	assert (mth);
+	
 	// Call the method.
 	return callCompiledMethod(mth, obj, sel, args, arguments->arguments.size());
 }
