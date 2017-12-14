@@ -122,7 +122,7 @@ ClosureInvoke Compiler::Context::compile()
 
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
-	//M->dump();
+	M->dump();
 
 	// Run the passes to optimise the function / module.
 	MPM.run(*M);
@@ -434,7 +434,7 @@ Value *ClosureDecl::compileExpression(Compiler::Context &c)
 		c.B.CreateStructGEP(closureTy, closure, 3));
 	if (!boundVars.empty())
 	{
-		// Get a pointer to the array of bound variables
+		// Get a pointer to the arrayjof bound variables
 		Value *boundVarsArray = c.B.CreateStructGEP(closureTy, closure, 4);
 		Type *boundVarsArrayTy = closureTy->elements()[4];
 		int i=0;
@@ -493,9 +493,117 @@ Value *Call::compileExpression(Compiler::Context &c)
 		// Insert the call
 		return c.B.CreateCall(invokeFn, args, "call_closure");
 	}
-	// If we are invoking a method, then we must first look up the method, then
-	// call it.
+
+// create a branch here mirroring interpreter check
+//  ie. create a static pointer to function pointer cachedMethod
+//  create static pointer to cached Selector
+//  create static pointer to cachedClass
+//  check *(ptr to cachedMethod) is not null
+//   and *(ptr to cachedClass) == getClassOf(obj)
+//  getClassOf needs to be implemented in IR
+//
+//  create two basic blocks, one with the usual lookupFn
+//  as well as rewriting the *(ptr)s as required
+//  and the other bb invoking the *(ptr to cachedMethod) directly
+
+
+	
+//	FunctionType *methodType = c.getMethodType(0, 1);
+//	Constant *getClassTypeFn = c.m->getOrInsertFunction("getClassFor", methodType->getPointerTo(), obj->getType());
+//	Value *classType = c.B.CreateCall(getClassTypeFn, {obj});
+
+// need to extract the 'isa' class from the obj
+//  use GEP to get address 0th member of this struct
+//  this is the _address_ of the 'isa' member
+//  ie. a pointer to a class pointer
+
+
+	// set up slow and fast path asic blocks
+//	BasicBlock* fast = BasicBlock::Create(c.C, "cached", c.F);
+	BasicBlock* slow = BasicBlock::Create(c.C, "cacheMiss", c.F);
+	BasicBlock *rejoinBB = BasicBlock::Create(c.C, "rejoin", c.F);
+
+	// set up first conditional to check if object is null or small int
+	// Value *isObjNull = c.B.CreateIsNull(obj); // ignore this for now
+
+	BasicBlock *smallIntBB = BasicBlock::Create(c.C, "intClass", c.F);
+	BasicBlock *clsBB = BasicBlock::Create(c.C, "otherClass", c.F);
+	BasicBlock *clsJoin = BasicBlock::Create(c.C, "clsObtained", c.F);
+
+	Value *intConst = ConstantInt::get(Type::getInt64Ty(c.C), 7);
+	Value *objAsInt = c.B.CreatePtrToInt(obj, Type::getInt64Ty(c.C)); 
+	
+	Value *isInt = c.B.CreateAnd(objAsInt, intConst);
+
+	// this needs to be a 1 bit wide int apparently!	
+	isInt = c.B.CreateIntCast(isInt, Type::getInt1Ty(c.C), false);
+
+	Value *cond = c.B.CreateCondBr(isInt, smallIntBB, clsBB);
+
+	// Basic Block to get cls if it is SmallIntClass
+	c.B.SetInsertPoint(smallIntBB);
+	Value *clsPtr = staticAddress(c, &SmallIntClass, c.ObjPtrTy); // apprently this is the right type
+	c.B.CreateBr(clsJoin);
+
+	// Basic Block to get cls if it is any Object other than SmallIntClass
+	c.B.SetInsertPoint(clsBB);
+
+//	obj->dump();
+//	obj->getType()->dump();
+//	obj->getType()->getPointerElementType()->dump();
+
+
+	// create the object struct type
+	StructType *obj_struct_type = llvm::StructType::create(c.C, "object struct");
+	std::vector<llvm::Type*> members;
+	members.push_back(Type::getInt8PtrTy(c.C)); // the 'isa' member we want hopefully
+	obj_struct_type->setBody(members);
+
+//	Value *isaPtr = c.B.CreateStructGEP(obj_struct_type->getPointerTo(), obj, 0); // addr of isa ptr TODO needs type
+//	Value *isaPtr = c.B.CreateLoad(obj);
+//	Value *isa = c.B.CreateLoad(isaPtr); // now we have the Class Ptr ignore null case
+//
+//  ditch the GEP and just access it directly since it's the first thing in the object struct
+// NOT good should use GEP
+
+	Value *isa = c.B.CreateLoad(obj); // this is the 'isa' ptr ie a pointer to a class
+	c.B.CreateBr(clsJoin);
+
+	//Basic Block to rejoin to once class has been obtained
+	c.B.SetInsertPoint(clsJoin);
+	isa = c.B.CreateIntToPtr(isa, c.ObjPtrTy); // convert to right type of pointer
+//	llvm::errs() << isa->getType() << '\n';
+//	llvm::errs() << clsPtr->getType() << '\n';
+	PHINode *phiObjClass = c.B.CreatePHI(c.ObjPtrTy, 2, "classsRejoin"); // now have either small int or class
+	phiObjClass->addIncoming(clsPtr, smallIntBB);
+	phiObjClass->addIncoming(isa, clsBB);
+
+// type we need for function
 	FunctionType *methodType = c.getMethodType(0, args.size() - 2);
+	PointerType *methodPtr = methodType->getPointerTo();
+	PointerType *methodPtrPtr = methodPtr->getPointerTo();
+
+	// set up some static pointers
+	PointerType *ptrTy = c.ObjPtrTy;
+	PointerType *ptrPtrTy = PointerType::getUnqual(ptrTy);
+	Value *ptrToCachedMethod = staticAddress(c, &cachedMethod, methodPtrPtr); // TODO needs type!
+	Value *ptrToCachedClass = staticAddress(c, &cachedClass, ptrPtrTy); // TODO needs type
+	Value *haveCached = c.B.CreateIsNotNull(c.B.CreateLoad(ptrToCachedMethod));
+
+	BasicBlock *notNull = BasicBlock::Create(c.C, "cachedNotNull", c.F);
+	c.B.CreateCondBr(haveCached, notNull, slow);
+
+	c.B.SetInsertPoint(notNull);
+	Value *cachedClass = c.B.CreateLoad(ptrToCachedClass); // get class pointer
+	cachedClass = c.B.CreateIntToPtr(cachedClass, c.ObjPtrTy); // need to get a ptr type out
+	Value *classesMatch = c.B.CreateICmpEQ(cachedClass, phiObjClass);
+
+	c.B.CreateCondBr(classesMatch, rejoinBB, slow);
+
+
+	// slow path
+	c.B.SetInsertPoint(slow);
+	//old code
 	// Get the lookup function
 	Constant *lookupFn = c.M->getOrInsertFunction("compiledMethodForSelector",
 			methodType->getPointerTo(), obj->getType(), c.SelTy);
@@ -503,8 +611,32 @@ Value *Call::compileExpression(Compiler::Context &c)
 	// always return *something* that we can call, even if it's just a function
 	// that reports an error.
 	Value *methodFn = c.B.CreateCall(lookupFn, {obj, args[1]});
+
+methodFn->getType()->print(llvm::errs());
+llvm::errs() << '\n';
+ptrToCachedMethod->getType()->print(llvm::errs());
+llvm::errs() << '\n';
+	llvm::errs() << methodFn->getType() << '\n';
+	llvm::errs() << ptrToCachedMethod->getType() << '\n';
+
+	c.B.CreateStore(methodFn, ptrToCachedMethod);
+	c.B.CreateStore(phiObjClass, ptrToCachedClass);
+	c.B.CreateBr(rejoinBB);
+
+	// rejoin 
+	c.B.SetInsertPoint(rejoinBB);
+	PHINode *rejoined = c.B.CreatePHI(methodFn->getType(), 2, "rejoin");
+	rejoined->addIncoming(methodFn, slow);
+	rejoined->addIncoming(c.B.CreateLoad(ptrToCachedMethod), clsJoin);
+
+
+
+
+
+
+
 	// Call the method
-	return c.B.CreateCall(methodFn, args, "call_method");
+	return c.B.CreateCall(rejoined, args, "call_method");
 }
 
 void Statements::compile(Compiler::Context &c)

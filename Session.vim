@@ -164,12 +164,12 @@ setlocal nowinfixwidth
 setlocal wrap
 setlocal wrapmargin=0
 silent! normal! zE
-let s:l = 595 - ((53 * winheight(0) + 31) / 62)
+let s:l = 596 - ((54 * winheight(0) + 31) / 62)
 if s:l < 1 | let s:l = 1 | endif
 exe s:l
 normal! zt
-595
-normal! 022|
+596
+normal! 035|
 wincmd w
 argglobal
 edit ./interpreter.cc
