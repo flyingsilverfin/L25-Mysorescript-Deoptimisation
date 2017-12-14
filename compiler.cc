@@ -23,10 +23,10 @@ namespace {
  * memory.
  */
 template<typename T>
-Value *staticAddress(Compiler::Context &c, T *ptr, Type *ty)
+Value *staticAddress(Compiler::Context &c, T *ptr, Type *ty, const Twine &name="")
 {
 	return c.B.CreateIntToPtr(
-		ConstantInt::get(c.ObjIntTy, reinterpret_cast<uintptr_t>(ptr)), ty);
+		ConstantInt::get(c.ObjIntTy, reinterpret_cast<uintptr_t>(ptr)), ty, name);
 }
 /**
  * Generate a small integer object from an integer value.
@@ -111,7 +111,7 @@ ClosureInvoke Compiler::Context::compile()
 	PassManager MPM;
 	PassManagerBuilder Builder;
 
-	Builder.addExtension(PassManagerBuilder::EP_LoopOptimizerEnd, addSplitArithmeticPass);
+//	Builder.addExtension(PassManagerBuilder::EP_LoopOptimizerEnd, addSplitArithmeticPass);
 
 	Builder.OptLevel = 2;
 	Builder.populateFunctionPassManager(FPM);
@@ -123,7 +123,7 @@ ClosureInvoke Compiler::Context::compile()
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
 	M->dump();
-
+	llvm::errs() << "\n\n\n\n\n\n\n";
 	// Run the passes to optimise the function / module.
 	MPM.run(*M);
 	FPM.run(*F);
@@ -131,7 +131,7 @@ ClosureInvoke Compiler::Context::compile()
 
 	// If you want to see the LLVM IR after optimisation, uncomment the
 	// following line:
-	M->dump();
+//	M->dump();
 
 	std::string FunctionName = F->getName();
 	std::string err;
@@ -542,8 +542,11 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	// Basic Block to get cls if it is SmallIntClass
 	c.B.SetInsertPoint(smallIntBB);
-	Value *clsPtr = staticAddress(c, &SmallIntClass, c.ObjPtrTy); // apprently this is the right type
+	Value *clsPtr = staticAddress(c, &SmallIntClass, c.ObjPtrTy, "smallIntClass"); // apprently this is the right type
+	// insert noop to check if this is working
+	c.B.CreateAdd(ConstantInt::get(c.ObjIntTy, 10), ConstantInt::get(c.ObjIntTy, 10));
 	c.B.CreateBr(clsJoin);
+
 
 	// Basic Block to get cls if it is any Object other than SmallIntClass
 	c.B.SetInsertPoint(clsBB);

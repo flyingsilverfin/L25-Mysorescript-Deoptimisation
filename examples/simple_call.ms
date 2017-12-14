@@ -1,4 +1,4 @@
-class c 
+class C
 {
 
 	func init() {
@@ -11,12 +11,16 @@ class c
 	}
 }
 
-var instance = new C.init();
-var i = 0;
-while ( i < 10 ) {
-	var x = instance.call_me(i);
-	x.dump();
-	i = i + 1;
-}
+func caller() {
+	var instance = new C;
+	var i = 0;
+	while ( i < 10 ) {
+		var x = instance.call_me(i);
+		i = i + 1;
+	}
+	return i;
+};
+
+caller().dump();
 
 
