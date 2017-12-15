@@ -13,14 +13,18 @@ class A
 	}
 }
 
+/* this will get JIT'ed so it's called many times, and therefore implementing inline caching */
+func getter(a) {
+	return a.get_val();
+};
 
-
+/* runner isn't actually compiled since it's only run once */
 func runner() {
 	var aclass = new A.init();
 	var i = 0;
 	var s = 0;
 	while ( i < 10000 ) {
-		s = s + aclass.get_val();
+		s = s + getter(aclass);
 		/*s.dump();*/
 		i = i + 1;
 	}

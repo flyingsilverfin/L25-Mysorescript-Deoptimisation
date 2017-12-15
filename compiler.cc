@@ -519,6 +519,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 //  this is the _address_ of the 'isa' member
 //  ie. a pointer to a class pointer
 
+	llvm::errs() << "running inline cache optimisation\n";
 
 	// set up slow and fast path asic blocks
 //	BasicBlock* fast = BasicBlock::Create(c.C, "cached", c.F);
