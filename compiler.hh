@@ -8,10 +8,16 @@
 
 #include "SplitArithmeticPass.cc"
 
+#define DEBUG_NONE 0
+#define DEBUG_NORMAL 1
+#define DEBUG_VERBOSE 2
 
 namespace Compiler 
 {
 	using MysoreScript::Obj;
+
+	int DEBUG_JIT = 0; // debug level, 0 is off, 1 is normal, 2 is verbose
+
 	/**
 	 * The compiler context.  Contains everything that AST nodes need to be
 	 * able to compile themselves.

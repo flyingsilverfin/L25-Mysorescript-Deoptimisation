@@ -119,8 +119,10 @@ ClosureInvoke Compiler::Context::compile()
 
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
-//	M->dump();
-//	llvm::errs() << "\n\n\n\n\n\n\n";
+	if (Compiler::DEBUG_JIT >= 1) {
+		llvm::errs() << "--- Pre-optimisation IR --- " << '\n';
+		M->dump();
+	}
 	// Run the passes to optimise the function / module.
 	MPM.run(*M);
 	FPM.run(*F);
@@ -128,7 +130,10 @@ ClosureInvoke Compiler::Context::compile()
 
 	// If you want to see the LLVM IR after optimisation, uncomment the
 	// following line:
-//	M->dump();
+	if (Compiler::DEBUG_JIT >= 2)	 {
+		llvm::errs() << " --- Optimized IR --- " << '\n';
+		M->dump();
+	}
 
 	std::string FunctionName = F->getName();
 	std::string err;
@@ -527,14 +532,14 @@ Value *Call::compileExpression(Compiler::Context &c)
 	BasicBlock *clsBB = BasicBlock::Create(c.C, "otherClass", c.F);
 	BasicBlock *clsJoin = BasicBlock::Create(c.C, "clsJoin", c.F);
 
-
-    llvm::errs() << "entry: " << c.B.GetInsertBlock() << '\n';			
-	llvm::errs() << "slow: " << slow << '\n';
-	llvm::errs() << "rejoinBB: " << rejoinBB << '\n';
-	llvm::errs() << "smallIntBB: " << smallIntBB << '\n';
-	llvm::errs() << "clsBB: " << clsBB << '\n';
-	llvm::errs() << "clsJoin: " << clsJoin << '\n';
-
+	if (Compiler::DEBUG_JIT >= DEBUG_NORMAL) {
+	    llvm::errs() << "entry: " << c.B.GetInsertBlock() << '\n';			
+		llvm::errs() << "slow: " << slow << '\n';
+		llvm::errs() << "rejoinBB: " << rejoinBB << '\n';
+		llvm::errs() << "smallIntBB: " << smallIntBB << '\n';
+		llvm::errs() << "clsBB: " << clsBB << '\n';
+		llvm::errs() << "clsJoin: " << clsJoin << '\n';
+	}
 
 	Value *intConst = ConstantInt::get(Type::getInt64Ty(c.C), 7);
 	Value *objAsInt = c.B.CreatePtrToInt(obj, Type::getInt64Ty(c.C)); 
@@ -550,10 +555,6 @@ Value *Call::compileExpression(Compiler::Context &c)
 	// Basic Block to get cls if it is any Object other than SmallIntClass
 	c.B.SetInsertPoint(clsBB);
 
-//	obj->dump();
-//	obj->getType()->dump();
-//	obj->getType()->getPointerElementType()->dump();
-
 
 	// create the object struct type
 	StructType *obj_struct_type = llvm::StructType::create(c.C, "object struct");
@@ -561,6 +562,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 	members.push_back(Type::getInt8PtrTy(c.C)); // the 'isa' member we want hopefully
 	obj_struct_type->setBody(members);
 
+// TODO this needs to be done properly
 //	Value *isaPtr = c.B.CreateStructGEP(obj_struct_type->getPointerTo(), obj, 0); // addr of isa ptr TODO needs type
 //	Value *isaPtr = c.B.CreateLoad(obj);
 //	Value *isa = c.B.CreateLoad(isaPtr); // now we have the Class Ptr ignore null case
@@ -582,8 +584,6 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	//Basic Block to rejoin to once class has been obtained
 	c.B.SetInsertPoint(clsJoin);
-//	llvm::errs() << isa->getType() << '\n';
-//	llvm::errs() << clsPtr->getType() << '\n';
 	PHINode *phiObjClass = c.B.CreatePHI(c.ObjPtrTy, 2, "classsRejoin"); // now have either small int or class
 	phiObjClass->addIncoming(clsPtr, smallIntBB);
 	phiObjClass->addIncoming(isa, clsBB);
@@ -602,9 +602,10 @@ Value *Call::compileExpression(Compiler::Context &c)
 	Value *haveCached = c.B.CreateIsNotNull(cachedMeth);
 
 	BasicBlock *notNull = BasicBlock::Create(c.C, "cachedNotNull", c.F);
-	
-llvm::errs() << "cachedNotNull: " << notNull << '\n';
 
+	if (Compiler::DEBUG_JIT >= DEBUG_NORMAL) {
+		llvm::errs() << "cachedNotNull: " << notNull << '\n';
+	}
 	c.B.CreateCondBr(haveCached, notNull, slow);
 
 	c.B.SetInsertPoint(notNull);
@@ -626,12 +627,12 @@ llvm::errs() << "cachedNotNull: " << notNull << '\n';
 	// that reports an error.
 	Value *methodFn = c.B.CreateCall(lookupFn, {obj, args[1]});
 
-methodFn->getType()->print(llvm::errs());
-llvm::errs() << '\n';
-ptrToCachedMethod->getType()->print(llvm::errs());
-llvm::errs() << '\n';
-	llvm::errs() << methodFn->getType() << '\n';
-	llvm::errs() << ptrToCachedMethod->getType() << '\n';
+//	methodFn->getType()->print(llvm::errs());
+//	llvm::errs() << '\n';
+//	ptrToCachedMethod->getType()->print(llvm::errs());
+//	llvm::errs() << '\n';
+//	llvm::errs() << methodFn->getType() << '\n';
+//	llvm::errs() << ptrToCachedMethod->getType() << '\n';
 
 	c.B.CreateStore(methodFn, ptrToCachedMethod);
 	c.B.CreateStore(phiObjClass, ptrToCachedClass);
