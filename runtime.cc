@@ -782,6 +782,7 @@ Class *getClassFor(Obj obj)
 
 CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
 {
+printf("Called compiledMethodForSelector!\n");
 	Class *cls = getClassFor(obj);
 	if (cls == nullptr){
 		return reinterpret_cast<CompiledMethod>(invalidMethod);
