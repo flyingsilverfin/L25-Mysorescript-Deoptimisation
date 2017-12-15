@@ -111,19 +111,16 @@ ClosureInvoke Compiler::Context::compile()
 	PassManager MPM;
 	PassManagerBuilder Builder;
 
-//	Builder.addExtension(PassManagerBuilder::EP_LoopOptimizerEnd, addSplitArithmeticPass);
+	Builder.addExtension(PassManagerBuilder::EP_LoopOptimizerEnd, addSplitArithmeticPass);
 
 	Builder.OptLevel = 2;
 	Builder.populateFunctionPassManager(FPM);
 	Builder.populateModulePassManager(MPM);
 
-	// addSplitArithmeticPass(Builder, MPM);
-
-
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
-	M->dump();
-	llvm::errs() << "\n\n\n\n\n\n\n";
+//	M->dump();
+//	llvm::errs() << "\n\n\n\n\n\n\n";
 	// Run the passes to optimise the function / module.
 	MPM.run(*M);
 	FPM.run(*F);
@@ -528,7 +525,16 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	BasicBlock *smallIntBB = BasicBlock::Create(c.C, "intClass", c.F);
 	BasicBlock *clsBB = BasicBlock::Create(c.C, "otherClass", c.F);
-	BasicBlock *clsJoin = BasicBlock::Create(c.C, "clsObtained", c.F);
+	BasicBlock *clsJoin = BasicBlock::Create(c.C, "clsJoin", c.F);
+
+
+    llvm::errs() << "entry: " << c.B.GetInsertBlock() << '\n';			
+	llvm::errs() << "slow: " << slow << '\n';
+	llvm::errs() << "rejoinBB: " << rejoinBB << '\n';
+	llvm::errs() << "smallIntBB: " << smallIntBB << '\n';
+	llvm::errs() << "clsBB: " << clsBB << '\n';
+	llvm::errs() << "clsJoin: " << clsJoin << '\n';
+
 
 	Value *intConst = ConstantInt::get(Type::getInt64Ty(c.C), 7);
 	Value *objAsInt = c.B.CreatePtrToInt(obj, Type::getInt64Ty(c.C)); 
@@ -540,14 +546,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	Value *cond = c.B.CreateCondBr(isInt, smallIntBB, clsBB);
 
-	// Basic Block to get cls if it is SmallIntClass
-	c.B.SetInsertPoint(smallIntBB);
-	Value *clsPtr = staticAddress(c, &SmallIntClass, c.ObjPtrTy, "smallIntClass"); // apprently this is the right type
-	// insert noop to check if this is working
-	c.B.CreateAdd(ConstantInt::get(c.ObjIntTy, 10), ConstantInt::get(c.ObjIntTy, 10));
-	c.B.CreateBr(clsJoin);
-
-
+	
 	// Basic Block to get cls if it is any Object other than SmallIntClass
 	c.B.SetInsertPoint(clsBB);
 
@@ -570,11 +569,19 @@ Value *Call::compileExpression(Compiler::Context &c)
 // NOT good should use GEP
 
 	Value *isa = c.B.CreateLoad(obj); // this is the 'isa' ptr ie a pointer to a class
+	isa = c.B.CreateIntToPtr(isa, c.ObjPtrTy); // convert to right type of pointer
 	c.B.CreateBr(clsJoin);
+
+// Basic Block to get cls if it is SmallIntClass
+	c.B.SetInsertPoint(smallIntBB);
+	Value *clsPtr = staticAddress(c, &SmallIntClass, c.ObjPtrTy, "smallIntClass"); // apprently this is the right type
+	c.B.CreateBr(clsJoin);
+
+
+
 
 	//Basic Block to rejoin to once class has been obtained
 	c.B.SetInsertPoint(clsJoin);
-	isa = c.B.CreateIntToPtr(isa, c.ObjPtrTy); // convert to right type of pointer
 //	llvm::errs() << isa->getType() << '\n';
 //	llvm::errs() << clsPtr->getType() << '\n';
 	PHINode *phiObjClass = c.B.CreatePHI(c.ObjPtrTy, 2, "classsRejoin"); // now have either small int or class
@@ -591,9 +598,13 @@ Value *Call::compileExpression(Compiler::Context &c)
 	PointerType *ptrPtrTy = PointerType::getUnqual(ptrTy);
 	Value *ptrToCachedMethod = staticAddress(c, &cachedMethod, methodPtrPtr); // TODO needs type!
 	Value *ptrToCachedClass = staticAddress(c, &cachedClass, ptrPtrTy); // TODO needs type
-	Value *haveCached = c.B.CreateIsNotNull(c.B.CreateLoad(ptrToCachedMethod));
+	Value *cachedMeth = c.B.CreateLoad(ptrToCachedMethod);
+	Value *haveCached = c.B.CreateIsNotNull(cachedMeth);
 
 	BasicBlock *notNull = BasicBlock::Create(c.C, "cachedNotNull", c.F);
+	
+llvm::errs() << "cachedNotNull: " << notNull << '\n';
+
 	c.B.CreateCondBr(haveCached, notNull, slow);
 
 	c.B.SetInsertPoint(notNull);
@@ -630,7 +641,7 @@ llvm::errs() << '\n';
 	c.B.SetInsertPoint(rejoinBB);
 	PHINode *rejoined = c.B.CreatePHI(methodFn->getType(), 2, "rejoin");
 	rejoined->addIncoming(methodFn, slow);
-	rejoined->addIncoming(c.B.CreateLoad(ptrToCachedMethod), clsJoin);
+	rejoined->addIncoming(cachedMeth, notNull);
 
 
 

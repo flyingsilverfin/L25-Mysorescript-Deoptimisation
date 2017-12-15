@@ -101,7 +101,7 @@ struct SplitArithmeticPass : FunctionPass, InstVisitor<SplitArithmeticPass>
   
   bool runOnFunction(Function &F) override {
 
-llvm::errs() << F << '\n';
+// llvm::errs() << F << '\n';
     
   	clear();
   	
@@ -122,7 +122,7 @@ llvm::errs() << F << '\n';
 
       for (auto &I : BB) {
 		CallInst *CI = dyn_cast<CallInst>(&I);
-// llvm::errs() << I << '\n';
+ //llvm::errs() << I << '\n';
 		if (CI && isArithmeticCall(CI)) {
 
 
@@ -142,17 +142,24 @@ llvm::errs() << F << '\n';
 //llvm::errs() << "HIIIIIIIi" << test0 << "  " << test0->getOpcode() << "  " <<  arg1 << '\n';
 
 //Instruction *test1 = dyn_cast<Instruction>(arg2);	 // RIGHT so the inner inttoptr is an "operator" not an instruction, with opcode 46 but NO clue what that is			
-//llvm::errs() << test1 << "  " <<  arg2  << '\n';		
+//llvm::errs() << arg1->getType() << "  " <<  arg2  << '\n';		
+
+//arg1->getType()->print(llvm::errs());
+//llvm::errs() << arg1 << '\n';
+//  arg2->getType()->print(llvm::errs());
+// llvm::errs() << arg2 << '\n';
 
 				// we only need to save it to check if it's not a constant!
-				if (dyn_cast<Operator>(arg1)->getOpcode() != 46) {	//46 is opcode of inttoptr?
-
+				Operator *casted_arg1 = dyn_cast<Operator>(arg1);
+				// if it's not an Operator (for ex a register) or a non-const operator...? 
+				if (!casted_arg1 || (casted_arg1 && casted_arg1->getOpcode() != 46)) {	
 //				if (!dyn_cast<Instruction>(arg1)) {
 					//llvm::errs() << "1. Inserted an arg into args to check: " << arg1 << '\n';
 					args_to_check.insert(arg1);
 				}
-				if (dyn_cast<Operator>(arg2)->getOpcode() != 46) {
-//				if (!dyn_cast<Instruction>(arg2)) {
+				Operator *casted_arg2 = dyn_cast<Operator>(arg2);
+				if (!casted_arg2 || (casted_arg2 && casted_arg2->getOpcode() != 46)) {
+				//if (dyn_cast<Operator>(arg2)->getOpcode() != 46) {
 					args_to_check.insert(arg2);
 				}
 				
@@ -465,7 +472,7 @@ llvm::errs() << F << '\n';
 		
 	}
 
-	llvm::errs() << F << '\n';
+//	llvm::errs() << F << '\n';
 	
    
     return false;
