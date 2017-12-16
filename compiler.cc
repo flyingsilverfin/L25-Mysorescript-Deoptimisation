@@ -599,9 +599,9 @@ Value *Call::compileExpression(Compiler::Context &c)
 	// set up some static pointers
 	PointerType *ptrTy = c.ObjPtrTy;
 	PointerType *ptrPtrTy = PointerType::getUnqual(ptrTy);
-	Value *ptrToCachedMethod = staticAddress(c, &cachedMethod, methodPtrPtr); // TODO needs type!
+	Value *ptrToPtrToCachedMethod = staticAddress(c, &cachedMethod, methodPtrPtr->getPointerTo()); // TODO needs type!
 	Value *ptrToCachedClass = staticAddress(c, &cachedClass, ptrPtrTy); // TODO needs type
-	Value *cachedMeth = c.B.CreateLoad(ptrToCachedMethod);
+	Value *cachedMeth = c.B.CreateLoad(ptrToPtrToCachedMethod);
 	Value *haveCached = c.B.CreateIsNotNull(cachedMeth);
 
 	BasicBlock *notNull = BasicBlock::Create(c.C, "cachedNotNull", c.F);
@@ -623,8 +623,8 @@ Value *Call::compileExpression(Compiler::Context &c)
 	c.B.SetInsertPoint(slow);
 	//old code
 	// Get the lookup function
-	Constant *lookupFn = c.M->getOrInsertFunction("compiledMethodForSelector",
-			methodType->getPointerTo(), obj->getType(), c.SelTy);
+	Constant *lookupFn = c.M->getOrInsertFunction("ptrToCompiledMethodForSelector",
+			methodPtr->getPointerTo(), obj->getType(), c.SelTy);
 	// Insert the call to the function that performs the lookup.  This will
 	// always return *something* that we can call, even if it's just a function
 	// that reports an error.
@@ -637,13 +637,13 @@ Value *Call::compileExpression(Compiler::Context &c)
 //	llvm::errs() << methodFn->getType() << '\n';
 //	llvm::errs() << ptrToCachedMethod->getType() << '\n';
 
-	c.B.CreateStore(methodFn, ptrToCachedMethod);
+	c.B.CreateStore(methodFn, ptrToPtrToCachedMethod);
 	c.B.CreateStore(phiObjClass, ptrToCachedClass);
 	c.B.CreateBr(rejoinBB);
 
 	// rejoin 
 	c.B.SetInsertPoint(rejoinBB);
-	PHINode *rejoined = c.B.CreatePHI(methodFn->getType(), 2, "rejoin");
+	PHINode *rejoined = c.B.CreatePHI(methodPtrPtr, 2, "rejoin");
 	rejoined->addIncoming(methodFn, slow);
 	rejoined->addIncoming(cachedMeth, notNull);
 
@@ -651,7 +651,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 	
 
 	// Call the method
-	return c.B.CreateCall(rejoined, args, "call_method");
+	return c.B.CreateCall(c.B.CreateLoad(rejoined), args, "call_method");
 }
 
 void Statements::compile(Compiler::Context &c)

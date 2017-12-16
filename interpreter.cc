@@ -448,19 +448,19 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 	Selector sel = lookupSelector(*method.get());
 	assert(sel);
 
-	CompiledMethod mth;
+	CompiledMethod *mth;
 	Class *cls = getClassFor(obj);
 	if (cachedMethod != nullptr && cls == cachedClass) {
 		mth = cachedMethod;
 	} else {
-		mth = compiledMethodForSelector(obj, sel);
+		mth = ptrToCompiledMethodForSelector(obj, sel);
 		cachedMethod = mth;
 		cachedClass = cls;
 	}
 	assert (mth);
 	
 	// Call the method.
-	return callCompiledMethod(mth, obj, sel, args, arguments->arguments.size());
+	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
 }
 
 Obj VarRef::evaluateExpr(Interpreter::Context &c)

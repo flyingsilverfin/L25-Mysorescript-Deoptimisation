@@ -780,6 +780,24 @@ Class *getClassFor(Obj obj)
 	return cls;
 }
 
+CompiledMethod *ptrToCompiledMethodForSelector(Obj obj, Selector sel)
+{
+printf("Called ptrToCompiledMethodForSelector!\n");
+	Class *cls = getClassFor(obj);
+	if (cls == nullptr){
+		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
+	}
+	//Class *cls = isInteger(obj) ? &SmallIntClass : obj->isa;
+	Method *mth = methodForSelector(cls, sel);
+	// If the method doesn't exist, return the invalid method function,
+	// otherwise return the function that we've just looked up.
+	if (!mth)
+	{
+		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
+	}
+	return &(mth->function);
+}
+
 CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
 {
 printf("Called compiledMethodForSelector!\n");

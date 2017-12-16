@@ -275,6 +275,10 @@ Obj mysoreScriptDiv(Obj lhs, Obj rhs);
 // helper after refactoring
 Class *getClassFor(Obj obj);
 
+// testing
+CompiledMethod *ptrToCompiledMethodForSelector(Obj obj, Selector sel);
+	
+
 /**
  * Look up the compiled method to call for a specific selector.  This is called
  * by compiled code to perform method lookups.  If a method has not yet been
