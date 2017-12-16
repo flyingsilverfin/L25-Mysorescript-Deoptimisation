@@ -134,7 +134,7 @@ ClosureInvoke Compiler::Context::compile()
 		llvm::errs() << " --- Optimized IR --- " << '\n';
 		M->dump();
 	}
-
+	
 	std::string FunctionName = F->getName();
 	std::string err;
 	EngineBuilder EB(std::move(M));
@@ -508,7 +508,6 @@ Value *Call::compileExpression(Compiler::Context &c)
 //  as well as rewriting the *(ptr)s as required
 //  and the other bb invoking the *(ptr to cachedMethod) directly
 
-
 	
 //	FunctionType *methodType = c.getMethodType(0, 1);
 //	Constant *getClassTypeFn = c.m->getOrInsertFunction("getClassFor", methodType->getPointerTo(), obj->getType());
@@ -646,10 +645,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 	rejoined->addIncoming(cachedMeth, notNull);
 
 
-
-
-
-
+	
 
 	// Call the method
 	return c.B.CreateCall(rejoined, args, "call_method");

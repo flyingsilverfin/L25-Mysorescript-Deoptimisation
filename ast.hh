@@ -3,6 +3,8 @@
 #include "interpreter.hh"
 #include <unordered_set>
 #include <functional>
+#include <time.h>
+
 
 namespace Compiler
 {
@@ -472,6 +474,9 @@ namespace AST
 	 */
 	struct ClosureDecl : Expression
 	{
+
+		clock_t time_spent_in_compiled_method;
+
 		/**
 		 * The name of this closure.
 		 */
