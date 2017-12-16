@@ -111,7 +111,8 @@ ClosureInvoke Compiler::Context::compile()
 	PassManager MPM;
 	PassManagerBuilder Builder;
 
-	Builder.addExtension(PassManagerBuilder::EP_LoopOptimizerEnd, addSplitArithmeticPass);
+// I think this is broken...
+//	Builder.addExtension(PassManagerBuilder::EP_LoopOptimizerEnd, addSplitArithmeticPass);
 
 	Builder.OptLevel = 2;
 	Builder.populateFunctionPassManager(FPM);
@@ -135,6 +136,8 @@ ClosureInvoke Compiler::Context::compile()
 		M->dump();
 	}
 	
+		M->dump();
+
 	std::string FunctionName = F->getName();
 	std::string err;
 	EngineBuilder EB(std::move(M));
