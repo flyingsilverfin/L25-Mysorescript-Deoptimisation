@@ -447,10 +447,28 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 	// Look up the selector and method to call
 	Selector sel = lookupSelector(*method.get());
 	assert(sel);
-	CompiledMethod mth = compiledMethodForSelector(obj, sel);
-	assert(mth);
+	
+	Class *cls = nullptr;
+	if (obj) {
+		if (isInteger(obj)) {
+			cls = &SmallIntClass;
+		} else {
+			cls = obj->isa;
+		}
+	}
+
+	CompiledMethod *mth = nullptr;
+	if (ptrToCachedMethod != nullptr && cls == cachedClass) {
+		mth = ptrToCachedMethod;
+	} else {
+		mth = ptrToCompiledMethodForSelector(obj, sel);
+		ptrToCachedMethod = mth;
+		cachedClass = cls;
+	}
+	
+	assert(mth && *mth);
 	// Call the method.
-	return callCompiledMethod(mth, obj, sel, args, arguments->arguments.size());
+	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
 }
 
 Obj VarRef::evaluateExpr(Interpreter::Context &c)

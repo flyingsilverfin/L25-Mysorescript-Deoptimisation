@@ -277,6 +277,9 @@ Obj mysoreScriptDiv(Obj lhs, Obj rhs);
  * compiled, the Method structure should be initialised with a trampoline
  * function that jumps back into the interpreter.
  */
+
+CompiledMethod* ptrToCompiledMethodForSelector(Obj obj, Selector sel);
+
 CompiledMethod compiledMethodForSelector(Obj obj, Selector sel);
 }
 

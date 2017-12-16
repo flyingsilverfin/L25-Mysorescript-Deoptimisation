@@ -740,6 +740,30 @@ Obj mysoreScriptDiv(Obj lhs, Obj rhs)
 {
 	return compiledMethodForSelector(lhs, StaticSelectors::div)(lhs, StaticSelectors::div, rhs);
 }
+
+CompiledMethod *ptrToCompiledMethodForSelector(Obj obj, Selector sel)
+{
+	// If this object is null, we'll call the invalid method handler when we
+	// invoke a method on it.  Note that we could easily follow the Smalltalk
+	// model of having a Null class whose methods are invoked, or the
+	// Objective-C model of always returning null here.
+	if (!obj)
+	{
+		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
+	}
+	// If it's a small integer, then use the small integer class, otherwise
+	// follow the class pointer.
+	Class *cls = isInteger(obj) ? &SmallIntClass : obj->isa;
+	Method *mth = methodForSelector(cls, sel);
+	// If the method doesn't exist, return the invalid method function,
+	// otherwise return the function that we've just looked up.
+	if (!mth)
+	{
+		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
+	}
+	return &(mth->function);
+}
+
 CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
 {
 	// If this object is null, we'll call the invalid method handler when we
