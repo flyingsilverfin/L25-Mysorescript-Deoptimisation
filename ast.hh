@@ -656,7 +656,6 @@ namespace AST
 	{
 		
 		MysoreScript::CompiledMethod cachedMethod; // cached function pointer for this call site
-		MysoreScript::Selector cachedSelector; // selector matching this function pointer
 	    MysoreScript::Class *cachedClass; // class the object isa type of
 		/**
 		 * The callee, if this is calling a closure, or the object that is
