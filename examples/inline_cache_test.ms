@@ -23,7 +23,7 @@ func runner() {
 	var aclass = new A.init();
 	var i = 0;
 	var s = 0;
-	while ( i < 100000 ) {
+	while ( i < 1000000 ) {
 		s = s + getter(aclass);
 		/*s.dump();*/
 		i = i + 1;

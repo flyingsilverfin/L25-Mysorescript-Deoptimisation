@@ -486,18 +486,113 @@ Value *Call::compileExpression(Compiler::Context &c)
 		// Insert the call
 		return c.B.CreateCall(invokeFn, args, "call_closure");
 	}
-	// If we are invoking a method, then we must first look up the method, then
-	// call it.
-	FunctionType *methodType = c.getMethodType(0, args.size() - 2);
-	// Get the lookup function
-	Constant *lookupFn = c.M->getOrInsertFunction("compiledMethodForSelector",
-			methodType->getPointerTo(), obj->getType(), c.SelTy);
-	// Insert the call to the function that performs the lookup.  This will
-	// always return *something* that we can call, even if it's just a function
-	// that reports an error.
-	Value *methodFn = c.B.CreateCall(lookupFn, {obj, args[1]});
-	// Call the method
-	return c.B.CreateCall(methodFn, args, "call_method");
+BasicBlock* entry = c.B.GetInsertBlock();
+Value* not_null_obj /* i1 */ = c.B.CreateIsNotNull(obj, "not_null_obj");
+BasicBlock* if_not_null_obj_body = BasicBlock::Create(c.C, "if_not_null_obj.body", c.F);
+BasicBlock* if_not_null_obj_cont = BasicBlock::Create(c.C, "if_not_null_obj.cont", c.F);
+c.B.CreateCondBr(not_null_obj, if_not_null_obj_body, if_not_null_obj_cont);
+
+c.B.SetInsertPoint(if_not_null_obj_body);
+Value* int_obj /* i64 */ = getAsSmallInt(c, obj);
+Value* tmp /* i64 */ = c.B.CreateAnd(int_obj, ConstantInt::get(c.ObjIntTy, ~7), "tmp");
+Value* is_int_obj /* i1 */ = c.B.CreateIsNotNull(tmp, "is_int_obj");
+BasicBlock* if_is_int_obj_then = BasicBlock::Create(c.C, "if_is_int_obj.then", c.F);
+BasicBlock* if_is_int_obj_else = BasicBlock::Create(c.C, "if_is_int_obj.else", c.F);
+c.B.CreateCondBr(is_int_obj, if_is_int_obj_then, if_is_int_obj_else);
+ /* DEBUG */ if_not_null_obj_body->dump();
+
+ c.B.SetInsertPoint(if_is_int_obj_then);
+ /* Ask about this  */
+ Value* cls_1 /* i8* */ = staticAddress(c, &SmallIntClass, c.ObjPtrTy);
+ BasicBlock* if_is_int_obj_end /* i1 */ = BasicBlock::Create(c.C, "if_is_int_obj.end", c.F);
+ c.B.CreateBr(if_is_int_obj_end);
+
+
+ c.B.SetInsertPoint(if_is_int_obj_else);
+ /* And about these two */
+ Value* cls_addr /* i8* */ = c.B.CreateConstGEP1_64(obj, offsetof(Object, isa), "cls_addr");
+ cls_addr /* i8** */ = c.B.CreateBitCast(cls_addr, cls_addr->getType()->getPointerTo(), "cls_addr_cast");
+ Value* cls_2 /* i8* */ = c.B.CreateLoad(cls_addr, "cls_2");
+ c.B.CreateBr(if_is_int_obj_end);
+ // /* DEBUG */ if_is_int_obj_else->dump();
+
+ c.B.SetInsertPoint(if_is_int_obj_end);
+ /* And this */
+ PHINode* cls_assigned /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls_assigned");
+ cls_assigned->addIncoming(cls_1, if_is_int_obj_then);
+ cls_assigned->addIncoming(cls_2, if_is_int_obj_else);
+ c.B.CreateBr(if_not_null_obj_cont);
+ // /* DEBUG */ if_is_int_obj_end->dump();
+
+ c.B.SetInsertPoint(if_not_null_obj_cont);
+ /* Forgot about this one first time around */
+ PHINode* cls /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls");
+ cls->addIncoming(ConstantPointerNull::get(c.ObjPtrTy), entry);
+ cls->addIncoming(cls_assigned, if_is_int_obj_end);
+ Value* prev_cls_addr /* i8** */ = staticAddress(c, &prev_cls, c.ObjPtrTy->getPointerTo());
+ Value* prev_cls_val /* i8* */ = c.B.CreateLoad(prev_cls_addr, "prev_cls_val");
+ Value* same /* i1 */ = c.B.CreateICmpEQ(prev_cls_val, cls, "same");
+ BasicBlock* if_same_then = BasicBlock::Create(c.C, "if_same.then", c.F);
+ BasicBlock* if_same_else = BasicBlock::Create(c.C, "if_same.else", c.F);
+ c.B.CreateCondBr(same, if_same_then, if_same_else);
+ // /* DEBUG */ if_not_null_obj_cont->dump();
+
+ c.B.SetInsertPoint(if_same_then);
+    // If we are invoking a method, then we must first look up the method, then call it.
+    FunctionType *methodType = c.getMethodType(0, args.size() - 2);
+    Value* prev_cm_addr = staticAddress(c, &prev_cm, methodType->getPointerTo()->getPointerTo()->getPointerTo());
+    Value* prev_cm_val /* (A -> B)** */ = c.B.CreateLoad(prev_cm_addr, "prev_cm_val");
+    Value* valid_prev_cm /* i1 */ = c.B.CreateIsNotNull(prev_cm_val, "valid_prev_cm");
+    BasicBlock* if_valid_prev_cm_body = BasicBlock::Create(c.C, "if_valid_prev_cm.body", c.F);
+    BasicBlock* if_same_end = BasicBlock::Create(c.C, "if_same.end", c.F);
+    c.B.CreateCondBr(valid_prev_cm, if_valid_prev_cm_body, if_same_end);
+    // /* DEBUG */ if_same_then->dump();
+
+    c.B.SetInsertPoint(if_valid_prev_cm_body);
+    Value* cm /* (A -> B)* */ = c.B.CreateLoad(prev_cm_val, "cm");
+    Value* res1 /* B */ = c.B.CreateCall(cm, args, "res1_call_cached_method");
+    BasicBlock* ans = BasicBlock::Create(c.C, "ans", c.F);
+    c.B.CreateBr(ans);
+    // /* DEBUG */ if_valid_prev_cm_body->dump();
+
+    c.B.SetInsertPoint(if_same_else);
+    c.B.CreateStore(cls /* i8* */, prev_cls_addr /* i8** */);
+    c.B.CreateBr(if_same_end);
+    // /* DEBUG */ if_same_else->dump();
+
+    c.B.SetInsertPoint(if_same_end);
+    // Get the lookup function
+
+    methodType->getReturnType();
+    Constant *lookupFn =
+    c.M->getOrInsertFunction(
+    "ptrToCompiledMethodForSelector",
+    methodType->getPointerTo()->getPointerTo(),
+    obj->getType(),
+    c.SelTy
+    );
+    // Insert the call to the function that performs the lookup.  This will
+    // always return *something* that we can call, even if it's just a function
+    // that reports an error.
+
+    Value* methodFn /* (A -> B)** */ = c.B.CreateCall(lookupFn, {obj, args[1]}, "methodFn");
+    c.B.CreateStore(methodFn /* (A -> B)** */ , prev_cm_addr /* (A -> B)*** */);
+    // Call the method
+
+    Value* deref_methodFn /* (A -> B)* */ = c.B.CreateLoad(methodFn);
+    Value* res2 /* B */ = c.B.CreateCall(deref_methodFn, args, "res2_call_method");
+    c.B.CreateBr(ans);
+    // /* DEBUG */ if_same_end->dump();
+
+    c.B.SetInsertPoint(ans);
+    PHINode* result /* B */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls");
+    result->addIncoming(res1 /* B */, if_valid_prev_cm_body);
+    result->addIncoming(res2 /* B */, if_same_end);
+    // /* DEBUG */ ans->dump();
+    return result;
+
+
+
 }
 
 void Statements::compile(Compiler::Context &c)
