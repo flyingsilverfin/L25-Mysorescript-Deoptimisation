@@ -467,6 +467,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 	// If there's no method, then we're trying to invoke a closure.
 	if (!method)
 	{
+		printf("Calling closure!\n");
 		// Get the closure invoke type. 
 		FunctionType *invokeFnTy = c.getClosureType(0, args.size() - 1);
 		// Get the type of a pointer to the closure object 

@@ -440,6 +440,7 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 			std::cerr << "ERROR: cannot call null closure." << std::endl;
 			return nullptr;
 		}
+		printf("calling closure!\n");
 		assert(obj->isa == &ClosureClass);
 		Closure *closure = reinterpret_cast<Closure*>(obj);
 		return callCompiledClosure(closure->invoke, closure, args, i);
