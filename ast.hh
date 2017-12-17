@@ -524,7 +524,7 @@ namespace AST
 		 * The interpreter is faster to start than the compiler, but is vastly
 		 * slower.
 		 */
-		static const int compileThreshold = 10;
+		static const int compileThreshold = 1500000;
 		/**
 		 * The number of times this closure has been interpreted.  Used to
 		 * determine whether it is now worthwhile to compile it.
@@ -649,6 +649,10 @@ namespace AST
 	 */
 	struct Call : public Expression
 	{
+
+		MysoreScript::Class* prev_cls = nullptr;
+		MysoreScript::CompiledMethod* prev_cm = nullptr;
+
 		/**
 		 * The callee, if this is calling a closure, or the object that is
 		 * having a method invoked on it if it is a method invocation.

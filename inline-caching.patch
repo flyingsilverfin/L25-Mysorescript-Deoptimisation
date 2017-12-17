@@ -1,0 +1,245 @@
+diff --git a/ast.hh b/ast.hh                                                                                [189/329]
+index bb07a87..e93ac94 100644
+--- a/ast.hh
++++ b/ast.hh
+@@ -662,6 +662,11 @@ namespace AST
+                 * The arguments to this call.
+                 */
+                ASTPtr<ArgList> arguments;
++               /**
++                * Previous class and method
++                */
++        MysoreScript::Class* prev_cls = nullptr;
++        MysoreScript::CompiledMethod* prev_cm = nullptr;
+                protected:
+                /**
+                 * Call the relevant method or closure.
+diff --git a/compiler.cc b/compiler.cc
+index b3d87f5..0df9e86 100644
+--- a/compiler.cc
++++ b/compiler.cc
+@@ -1,5 +1,5 @@
+ #include <functional>
+-#include "interpreter.hh"
++#include <cstddef>
+ #include "compiler.hh"
+ #include "ast.hh"
+ #include <llvm/ExecutionEngine/ExecutionEngine.h>
+@@ -486,18 +486,111 @@ Value *Call::compileExpression(Compiler::Context &c)
+                // Insert the call
+                return c.B.CreateCall(invokeFn, args, "call_closure");
+        }
+-       // If we are invoking a method, then we must first look up the method, then
+-       // call it.
++
++       /* c.ObjPtrTy = Type::getInt8PtrTy(C) */
++       /* c.ObjIntTy = Type::getInt64Ty(C) */
++    /* obj : c.ObjPtrTy */
++    BasicBlock* entry = c.B.GetInsertBlock();
++    Value* not_null_obj /* i1 */ = c.B.CreateIsNotNull(obj, "not_null_obj");
++    BasicBlock* if_not_null_obj_body = BasicBlock::Create(c.C, "if_not_null_obj.body", c.F);
++    BasicBlock* if_not_null_obj_cont = BasicBlock::Create(c.C, "if_not_null_obj.cont", c.F);
++    c.B.CreateCondBr(not_null_obj, if_not_null_obj_body, if_not_null_obj_cont);
++
++    c.B.SetInsertPoint(if_not_null_obj_body);
++    Value* int_obj /* i64 */ = getAsSmallInt(c, obj);
++    Value* tmp /* i64 */ = c.B.CreateAnd(int_obj, ConstantInt::get(c.ObjIntTy, ~7), "tmp");
++    Value* is_int_obj /* i1 */ = c.B.CreateIsNotNull(tmp, "is_int_obj");
++    BasicBlock* if_is_int_obj_then = BasicBlock::Create(c.C, "if_is_int_obj.then", c.F);
++    BasicBlock* if_is_int_obj_else = BasicBlock::Create(c.C, "if_is_int_obj.else", c.F);
++    c.B.CreateCondBr(is_int_obj, if_is_int_obj_then, if_is_int_obj_else);
++    // /* DEBUG */ if_not_null_obj_body->dump();
++
++    c.B.SetInsertPoint(if_is_int_obj_then);
++    /* Ask about this  */
++    Value* cls_1 /* i8* */ = staticAddress(c, &SmallIntClass, c.ObjPtrTy);
++    BasicBlock* if_is_int_obj_end /* i1 */ = BasicBlock::Create(c.C, "if_is_int_obj.end", c.F);
++    c.B.CreateBr(if_is_int_obj_end);
++    // /* DEBUG */ if_is_int_obj_then->dump();                                                             [132/329]
++
++    c.B.SetInsertPoint(if_is_int_obj_else);
++    /* And about these two */
++    Value* cls_addr /* i8* */ = c.B.CreateConstGEP1_64(obj, offsetof(Object, isa), "cls_addr");
++    cls_addr /* i8** */ = c.B.CreateBitCast(cls_addr, cls_addr->getType()->getPointerTo(), "cls_addr_cast");
++    Value* cls_2 /* i8* */ = c.B.CreateLoad(cls_addr, "cls_2");
++    c.B.CreateBr(if_is_int_obj_end);
++    // /* DEBUG */ if_is_int_obj_else->dump();
++
++    c.B.SetInsertPoint(if_is_int_obj_end);
++    /* And this */
++    PHINode* cls_assigned /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls_assigned");
++       cls_assigned->addIncoming(cls_1, if_is_int_obj_then);
++       cls_assigned->addIncoming(cls_2, if_is_int_obj_else);
++    c.B.CreateBr(if_not_null_obj_cont);
++    // /* DEBUG */ if_is_int_obj_end->dump();
++
++    c.B.SetInsertPoint(if_not_null_obj_cont);
++    /* Forgot about this one first time around */
++    PHINode* cls /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls");
++    cls->addIncoming(ConstantPointerNull::get(c.ObjPtrTy), entry);
++    cls->addIncoming(cls_assigned, if_is_int_obj_end);
++    Value* prev_cls_addr /* i8** */ = staticAddress(c, &prev_cls, c.ObjPtrTy->getPointerTo());
++    Value* prev_cls_val /* i8* */ = c.B.CreateLoad(prev_cls_addr, "prev_cls_val");
++    Value* same /* i1 */ = c.B.CreateICmpEQ(prev_cls_val, cls, "same");
++    BasicBlock* if_same_then = BasicBlock::Create(c.C, "if_same.then", c.F);
++    BasicBlock* if_same_else = BasicBlock::Create(c.C, "if_same.else", c.F);
++    c.B.CreateCondBr(same, if_same_then, if_same_else);
++    // /* DEBUG */ if_not_null_obj_cont->dump();
++
++    c.B.SetInsertPoint(if_same_then);
++       // If we are invoking a method, then we must first look up the method, then call it.
+        FunctionType *methodType = c.getMethodType(0, args.size() - 2);
++    Value* prev_cm_addr = staticAddress(c, &prev_cm, methodType->getPointerTo()->getPointerTo()->getPointerTo());
++    Value* prev_cm_val /* (A -> B)** */ = c.B.CreateLoad(prev_cm_addr, "prev_cm_val");
++    Value* valid_prev_cm /* i1 */ = c.B.CreateIsNotNull(prev_cm_val, "valid_prev_cm");
++    BasicBlock* if_valid_prev_cm_body = BasicBlock::Create(c.C, "if_valid_prev_cm.body", c.F);
++    BasicBlock* if_same_end = BasicBlock::Create(c.C, "if_same.end", c.F);
++    c.B.CreateCondBr(valid_prev_cm, if_valid_prev_cm_body, if_same_end);
++    // /* DEBUG */ if_same_then->dump();
++
++    c.B.SetInsertPoint(if_valid_prev_cm_body);
++    Value* cm /* (A -> B)* */ = c.B.CreateLoad(prev_cm_val, "cm");
++    Value* res1 /* B */ = c.B.CreateCall(cm, args, "res1_call_cached_method");
++    BasicBlock* ans = BasicBlock::Create(c.C, "ans", c.F);
++    c.B.CreateBr(ans);
++    // /* DEBUG */ if_valid_prev_cm_body->dump();
++
++    c.B.SetInsertPoint(if_same_else);
++    c.B.CreateStore(cls /* i8* */, prev_cls_addr /* i8** */);
++    c.B.CreateBr(if_same_end);
++    // /* DEBUG */ if_same_else->dump();
++
++    c.B.SetInsertPoint(if_same_end);
+        // Get the lookup function
+-       Constant *lookupFn = c.M->getOrInsertFunction("compiledMethodForSelector",                           [76/329]
+-                       methodType->getPointerTo(), obj->getType(), c.SelTy);
++    methodType->getReturnType();
++       Constant *lookupFn =
++        c.M->getOrInsertFunction(
++            "ptrToCompiledMethodForSelector",
++            methodType->getPointerTo()->getPointerTo(),
++            obj->getType(),
++            c.SelTy
++        );
+        // Insert the call to the function that performs the lookup.  This will
+        // always return *something* that we can call, even if it's just a function
+        // that reports an error.
+-       Value *methodFn = c.B.CreateCall(lookupFn, {obj, args[1]});
++       Value* methodFn /* (A -> B)** */ = c.B.CreateCall(lookupFn, {obj, args[1]}, "methodFn");
++    c.B.CreateStore(methodFn /* (A -> B)** */ , prev_cm_addr /* (A -> B)*** */);
+        // Call the method
+-       return c.B.CreateCall(methodFn, args, "call_method");
++    Value* deref_methodFn /* (A -> B)* */ = c.B.CreateLoad(methodFn);
++       Value* res2 /* B */ = c.B.CreateCall(deref_methodFn, args, "res2_call_method");
++    c.B.CreateBr(ans);
++    // /* DEBUG */ if_same_end->dump();
++
++    c.B.SetInsertPoint(ans);
++    PHINode* result /* B */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls");
++       result->addIncoming(res1 /* B */, if_valid_prev_cm_body);
++       result->addIncoming(res2 /* B */, if_same_end);
++    // /* DEBUG */ ans->dump();
++    return result;
+ }
+
+ void Statements::compile(Compiler::Context &c)
+diff --git a/compiler.hh b/compiler.hh
+index 65b2eee..68bf04a 100644
+--- a/compiler.hh
++++ b/compiler.hh
+@@ -1,4 +1,5 @@
+ #pragma once
++#include "interpreter.hh"
+ #include "runtime.hh"
+ #include <llvm/IR/Module.h>
+ #include <llvm/IR/IRBuilder.h>
+diff --git a/interpreter.cc b/interpreter.cc
+index 9933463..c5c27a4 100644
+--- a/interpreter.cc
++++ b/interpreter.cc
+@@ -444,13 +444,35 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
+                Closure *closure = reinterpret_cast<Closure*>(obj);
+                return callCompiledClosure(closure->invoke, closure, args, i);
+        }
++
+        // Look up the selector and method to call
+        Selector sel = lookupSelector(*method.get());
+        assert(sel);
+-       CompiledMethod mth = compiledMethodForSelector(obj, sel);
+-       assert(mth);
++
++    Class* cls = nullptr;                                                                                   [19/329]
++    if (obj) {
++        if (isInteger(obj)) {
++            cls = &SmallIntClass;
++        } else {
++            cls = obj->isa;
++        }
++        /* phi for cls */
++    }
++
++    if (cls == prev_cls) {
++        if (prev_cm) {
++            return callCompiledMethod(*prev_cm, obj, sel, args, arguments->arguments.size());
++        }
++    } else {
++        prev_cls = cls;
++    }
++
++       CompiledMethod* mth = ptrToCompiledMethodForSelector(obj, sel);
++       assert(mth && *mth);
++    prev_cm = mth;
++       // Count how many times this class has come up
+        // Call the method.
+-       return callCompiledMethod(mth, obj, sel, args, arguments->arguments.size());
++       return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
+ }
+
+ Obj VarRef::evaluateExpr(Interpreter::Context &c)
+diff --git a/runtime.cc b/runtime.cc
+index e13250e..a41dccc 100644
+--- a/runtime.cc
++++ b/runtime.cc
+@@ -742,13 +742,17 @@ Obj mysoreScriptDiv(Obj lhs, Obj rhs)
+ }
+ CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
+ {
++    return *ptrToCompiledMethodForSelector(obj, sel);
++}
++CompiledMethod* ptrToCompiledMethodForSelector(Obj obj, Selector sel)
++{
+        // If this object is null, we'll call the invalid method handler when we
+        // invoke a method on it.  Note that we could easily follow the Smalltalk
+        // model of having a Null class whose methods are invoked, or the
+        // Objective-C model of always returning null here.
+        if (!obj)
+        {
+-               return reinterpret_cast<CompiledMethod>(invalidMethod);
++               return reinterpret_cast<CompiledMethod*>(&invalidMethod);
+        }
+        // If it's a small integer, then use the small integer class, otherwise
+        // follow the class pointer.
+@@ -758,9 +762,9 @@ CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
+        // otherwise return the function that we've just looked up.
+        if (!mth)
+        {
+-               return reinterpret_cast<CompiledMethod>(invalidMethod);
++               return reinterpret_cast<CompiledMethod*>(&invalidMethod);
+        }
+-       return mth->function;
++       return &mth->function;
+ }
+ }
+
+diff --git a/runtime.hh b/runtime.hh
+index 537db54..ee16194 100644
+--- a/runtime.hh
++++ b/runtime.hh
+@@ -278,6 +278,7 @@ Obj mysoreScriptDiv(Obj lhs, Obj rhs);
+  * function that jumps back into the interpreter.
+  */
+ CompiledMethod compiledMethodForSelector(Obj obj, Selector sel);
++CompiledMethod* ptrToCompiledMethodForSelector(Obj obj, Selector sel);
+ }
+
+ /**
