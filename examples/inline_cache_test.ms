@@ -5,7 +5,38 @@ class A
 		a = 0;
 		return self;
 	}
+	func get_val1()
+	{
+		a = a + 1;
+		return a;
+	}
+
+	func get_val2()
+	{
+		a = a + 1;
+		return a;
+	}
 	
+	func get_val3()
+	{
+		a = a + 1;
+		return a;
+	}
+
+	func get_val4()
+	{
+		a = a + 1;
+		return a;
+	}
+
+	func get_val5()
+	{
+		a = a + 1;
+		return a;
+	}
+
+
+
 	func get_val()
 	{
 		a = a + 1;
