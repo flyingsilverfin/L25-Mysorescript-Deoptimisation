@@ -278,9 +278,10 @@ Obj mysoreScriptDiv(Obj lhs, Obj rhs);
  * function that jumps back into the interpreter.
  */
 
+CompiledMethod compiledMethodForSelector(Obj obj, Selector sel);
+
 CompiledMethod* ptrToCompiledMethodForSelector(Obj obj, Selector sel);
 
-CompiledMethod compiledMethodForSelector(Obj obj, Selector sel);
 }
 
 /**

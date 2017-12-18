@@ -421,8 +421,7 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 	// Get the callee, which is either a closure or some other object that will
 	// have a method on it invoked.
 	Obj obj = callee->evaluate(c);
-	assert(obj);
-	auto &argsAST = arguments->arguments;
+	assert(obj);auto &argsAST = arguments->arguments;
 	size_t i=0;
 	// Evaluate each argument, in order, and pop them in the array.
 	for (auto &Arg : argsAST)
@@ -440,7 +439,6 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 			std::cerr << "ERROR: cannot call null closure." << std::endl;
 			return nullptr;
 		}
-		printf("calling closure!\n");
 		assert(obj->isa == &ClosureClass);
 		Closure *closure = reinterpret_cast<Closure*>(obj);
 		return callCompiledClosure(closure->invoke, closure, args, i);
@@ -461,12 +459,18 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 	CompiledMethod *mth = nullptr;
 	if (ptrToCachedMethod != nullptr && cls == cachedClass) {
 		mth = ptrToCachedMethod;
+		counter1++;
 	} else {
 		mth = ptrToCompiledMethodForSelector(obj, sel);
 		ptrToCachedMethod = mth;
 		cachedClass = cls;
+		counter2++;
 	}
-	
+
+	if (counter1 + counter2 > 1000000-10) {
+		printf("fast path: %lu, slow path: %lu\n", counter1, counter2);
+	}
+
 	assert(mth && *mth);
 	// Call the method.
 	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());

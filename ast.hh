@@ -650,8 +650,12 @@ namespace AST
 	struct Call : public Expression
 	{
 
-		MysoreScript::CompiledMethod *ptrToCachedMethod;
-		MysoreScript::Class *cachedClass;
+		MysoreScript::CompiledMethod *ptrToCachedMethod = nullptr;
+		MysoreScript::Class *cachedClass = nullptr;
+
+
+		uint64_t counter1 = 0;
+		uint64_t counter2 = 0;
 
 		/**
 		 * The callee, if this is calling a closure, or the object that is
