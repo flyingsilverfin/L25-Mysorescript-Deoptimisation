@@ -726,40 +726,21 @@ extern "C"
 {
 Obj mysoreScriptAdd(Obj lhs, Obj rhs)
 {
-
-	// if it's a number embedded in ptr
-	if (isInteger(lhs)) {
-		return createSmallInteger(getInteger(lhs) + getInteger(rhs));
-	} else {
-		return compiledMethodForSelector(lhs, add)(lhs, add, rhs);
-	}
+	return compiledMethodForSelector(lhs, add)(lhs, add, rhs);
 }
 Obj mysoreScriptSub(Obj lhs, Obj rhs)
 {
-	if (isInteger(lhs)) {
-		return createSmallInteger(getInteger(lhs) - getInteger(rhs));
-	} else {
-		return compiledMethodForSelector(lhs, sub)(lhs, sub, rhs);
-	}
+	return compiledMethodForSelector(lhs, sub)(lhs, sub, rhs);
 }
 Obj mysoreScriptMul(Obj lhs, Obj rhs)
 {
-	if (isInteger(lhs)) {
-		return createSmallInteger(getInteger(lhs) * getInteger(rhs));
-	} else {
-		return compiledMethodForSelector(lhs, mul)(lhs, mul, rhs);
-	}
+	return compiledMethodForSelector(lhs, mul)(lhs, mul, rhs);
 }
 Obj mysoreScriptDiv(Obj lhs, Obj rhs)
 {
-	if (isInteger(lhs)) {
- 		return createSmallInteger(getInteger(lhs) / getInteger(rhs));
-	} else {
-		return compiledMethodForSelector(lhs, StaticSelectors::div)(lhs, StaticSelectors::div, rhs);
-	}
+	return compiledMethodForSelector(lhs, StaticSelectors::div)(lhs, StaticSelectors::div, rhs);
 }
-
-Class *getClassFor(Obj obj)
+CompiledMethod* ptrToCompiledMethodForSelector(Obj obj, Selector sel)
 {
 	// If this object is null, we'll call the invalid method handler when we
 	// invoke a method on it.  Note that we could easily follow the Smalltalk
@@ -767,27 +748,11 @@ Class *getClassFor(Obj obj)
 	// Objective-C model of always returning null here.
 	if (!obj)
 	{
-		return nullptr;
+		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
 	}
 	// If it's a small integer, then use the small integer class, otherwise
 	// follow the class pointer.
-	Class *cls;
-	if (isInteger(obj)) {
-		cls = &SmallIntClass;
-	} else {
-		cls = obj->isa;
-	}
-	return cls;
-}
-
-CompiledMethod *ptrToCompiledMethodForSelector(Obj obj, Selector sel)
-{
-printf("Called ptrToCompiledMethodForSelector!\n");
-	Class *cls = getClassFor(obj);
-	if (cls == nullptr){
-		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
-	}
-	//Class *cls = isInteger(obj) ? &SmallIntClass : obj->isa;
+	Class *cls = isInteger(obj) ? &SmallIntClass : obj->isa;
 	Method *mth = methodForSelector(cls, sel);
 	// If the method doesn't exist, return the invalid method function,
 	// otherwise return the function that we've just looked up.
@@ -798,22 +763,8 @@ printf("Called ptrToCompiledMethodForSelector!\n");
 	return &(mth->function);
 }
 
-CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
-{
-printf("Called compiledMethodForSelector!\n");
-	Class *cls = getClassFor(obj);
-	if (cls == nullptr){
-		return reinterpret_cast<CompiledMethod>(invalidMethod);
-	}
-	//Class *cls = isInteger(obj) ? &SmallIntClass : obj->isa;
-	Method *mth = methodForSelector(cls, sel);
-	// If the method doesn't exist, return the invalid method function,
-	// otherwise return the function that we've just looked up.
-	if (!mth)
-	{
-		return reinterpret_cast<CompiledMethod>(invalidMethod);
-	}
-	return mth->function;
+CompiledMethod compiledMethodForSelector(Obj obj, Selector sel) {
+	return *ptrToCompiledMethodForSelector(obj, sel);
 }
 }
 

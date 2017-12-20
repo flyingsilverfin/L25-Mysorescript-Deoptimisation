@@ -448,16 +448,33 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 	Selector sel = lookupSelector(*method.get());
 	assert(sel);
 
+	Class *cls = nullptr;
+	if (obj) {
+		if (isInteger(obj)) {
+			cls = &SmallIntClass;
+		} else {
+			cls = obj->isa;
+		}
+	}
+
+//	if (cls == cachedClass) {
+//		if (cachedMethod != nullptr)  {
+//			return callCompiledMethod(*cachedMethod, obj, sel, args, arguments->arguments.size());
+//		}
+//	}// else {
+//		cachedClass = cls;
+	//}
+
+
 	CompiledMethod *mth;
-	Class *cls = getClassFor(obj);
-	if (cachedMethod != nullptr && cls == cachedClass) {
+	if (cls == cachedClass && cachedMethod != nullptr) {
 		mth = cachedMethod;
 	} else {
 		mth = ptrToCompiledMethodForSelector(obj, sel);
 		cachedMethod = mth;
 		cachedClass = cls;
 	}
-	assert (mth);
+	assert( mth && *mth);
 	
 	// Call the method.
 	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());

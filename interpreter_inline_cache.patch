@@ -1,0 +1,185 @@
+diff --git a/ast.hh b/ast.hh
+index bb07a87..c30543c 100644
+--- a/ast.hh
++++ b/ast.hh
+@@ -524,7 +524,7 @@ namespace AST
+ 		 * The interpreter is faster to start than the compiler, but is vastly
+ 		 * slower.
+ 		 */
+-		static const int compileThreshold = 10;
++		static const int compileThreshold = 15000000;
+ 		/**
+ 		 * The number of times this closure has been interpreted.  Used to
+ 		 * determine whether it is now worthwhile to compile it.
+@@ -649,6 +649,14 @@ namespace AST
+ 	 */
+ 	struct Call : public Expression
+ 	{
++
++		MysoreScript::CompiledMethod *ptrToCachedMethod = nullptr;
++		MysoreScript::Class *cachedClass = nullptr;
++
++
++		uint64_t counter1 = 0;
++		uint64_t counter2 = 0;
++
+ 		/**
+ 		 * The callee, if this is calling a closure, or the object that is
+ 		 * having a method invoked on it if it is a method invocation.
+diff --git a/compiler.cc b/compiler.cc
+index b3d87f5..8b213d1 100644
+--- a/compiler.cc
++++ b/compiler.cc
+@@ -467,6 +467,7 @@ Value *Call::compileExpression(Compiler::Context &c)
+ 	// If there's no method, then we're trying to invoke a closure.
+ 	if (!method)
+ 	{
++		printf("Calling closure!\n");
+ 		// Get the closure invoke type. 
+ 		FunctionType *invokeFnTy = c.getClosureType(0, args.size() - 1);
+ 		// Get the type of a pointer to the closure object 
+diff --git a/examples/inline_cache_test.ms b/examples/inline_cache_test.ms
+new file mode 100644
+index 0000000..71714ea
+--- /dev/null
++++ b/examples/inline_cache_test.ms
+@@ -0,0 +1,29 @@
++class A
++{
++	var a;
++	func init() {
++		a = 0;
++		return self;
++	}
++	
++	func get_val()
++	{
++		a = a + 1;
++		return a;
++	}
++}
++
++/* if allowed, this will get JIT'ed so it's called many times, and therefore implementing inline caching */
++func getter(a) {
++	return a.get_val();
++};
++
++var aclass = new A.init();
++var i = 0;
++var s = 0;
++while ( i < 1000000 ) {
++	s = s + getter(aclass);
++	/*s.dump();*/
++	i = i + 1;
++}
++s.dump();
+diff --git a/interpreter.cc b/interpreter.cc
+index 750e814..94f18fe 100644
+--- a/interpreter.cc
++++ b/interpreter.cc
+@@ -421,8 +421,7 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
+ 	// Get the callee, which is either a closure or some other object that will
+ 	// have a method on it invoked.
+ 	Obj obj = callee->evaluate(c);
+-	assert(obj);
+-	auto &argsAST = arguments->arguments;
++	assert(obj);auto &argsAST = arguments->arguments;
+ 	size_t i=0;
+ 	// Evaluate each argument, in order, and pop them in the array.
+ 	for (auto &Arg : argsAST)
+@@ -447,10 +446,34 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
+ 	// Look up the selector and method to call
+ 	Selector sel = lookupSelector(*method.get());
+ 	assert(sel);
+-	CompiledMethod mth = compiledMethodForSelector(obj, sel);
+-	assert(mth);
++	
++	Class *cls = nullptr;
++	if (obj) {
++		if (isInteger(obj)) {
++			cls = &SmallIntClass;
++		} else {
++			cls = obj->isa;
++		}
++	}
++
++	CompiledMethod *mth = nullptr;
++	if (ptrToCachedMethod != nullptr && cls == cachedClass) {
++		mth = ptrToCachedMethod;
++		counter1++;
++	} else {
++		mth = ptrToCompiledMethodForSelector(obj, sel);
++		ptrToCachedMethod = mth;
++		cachedClass = cls;
++		counter2++;
++	}
++
++	if (counter1 + counter2 > 1000000-10) {
++		printf("fast path: %lu, slow path: %lu\n", counter1, counter2);
++	}
++
++	assert(mth && *mth);
+ 	// Call the method.
+-	return callCompiledMethod(mth, obj, sel, args, arguments->arguments.size());
++	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
+ }
+ 
+ Obj VarRef::evaluateExpr(Interpreter::Context &c)
+diff --git a/runtime.cc b/runtime.cc
+index e13250e..35da1e1 100644
+--- a/runtime.cc
++++ b/runtime.cc
+@@ -740,15 +740,21 @@ Obj mysoreScriptDiv(Obj lhs, Obj rhs)
+ {
+ 	return compiledMethodForSelector(lhs, StaticSelectors::div)(lhs, StaticSelectors::div, rhs);
+ }
++
+ CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
+ {
++	return *ptrToCompiledMethodForSelector(obj, sel);
++}
++
++CompiledMethod *ptrToCompiledMethodForSelector(Obj obj, Selector sel)
++{
+ 	// If this object is null, we'll call the invalid method handler when we
+ 	// invoke a method on it.  Note that we could easily follow the Smalltalk
+ 	// model of having a Null class whose methods are invoked, or the
+ 	// Objective-C model of always returning null here.
+ 	if (!obj)
+ 	{
+-		return reinterpret_cast<CompiledMethod>(invalidMethod);
++		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
+ 	}
+ 	// If it's a small integer, then use the small integer class, otherwise
+ 	// follow the class pointer.
+@@ -758,11 +764,11 @@ CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
+ 	// otherwise return the function that we've just looked up.
+ 	if (!mth)
+ 	{
+-		return reinterpret_cast<CompiledMethod>(invalidMethod);
++		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
+ 	}
+-	return mth->function;
+-}
++	return &(mth->function);
+ }
+ 
++}
+ }  // namespace MysoreScript
+ 
+diff --git a/runtime.hh b/runtime.hh
+index 537db54..f34a370 100644
+--- a/runtime.hh
++++ b/runtime.hh
+@@ -277,7 +277,11 @@ Obj mysoreScriptDiv(Obj lhs, Obj rhs);
+  * compiled, the Method structure should be initialised with a trampoline
+  * function that jumps back into the interpreter.
+  */
++
+ CompiledMethod compiledMethodForSelector(Obj obj, Selector sel);
++
++CompiledMethod* ptrToCompiledMethodForSelector(Obj obj, Selector sel);
++
+ }
+ 
+ /**
