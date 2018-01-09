@@ -130,6 +130,13 @@ namespace Interpreter
 		 * Are we currently returning?
 		 */
 		bool isReturning = false;
+
+		/*
+		 * used to check if we've found the AST node we're looking for during side exit into interpreter
+		 */
+		bool astNodeFound = false;
+
+
 		/**
 		 * Push a new symbol table on top of the stack.
 		 */

@@ -521,6 +521,11 @@ Value *Call::compileExpression(Compiler::Context &c)
 //  this is the _address_ of the 'isa' member
 //  ie. a pointer to a class pointer
 
+
+
+	// TODO insert fast path type into accounting block for this function
+
+
 	llvm::errs() << "running inline cache optimisation\n";
 
 	// set up slow and fast path asic blocks

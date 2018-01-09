@@ -22,6 +22,14 @@ inline bool needsGC(Obj o)
 Interpreter::Context *currentContext;
 
 using MysoreScript::Closure;
+
+
+//Obj resumeInInterpreter(ASTNode, live_vars
+
+
+
+
+
 /**
  * 0-argument trampoline for jumping back into the interpreter when a closure
  * that has not yet been compiled is executed.
@@ -374,11 +382,25 @@ void Context::setSymbol(const std::string &name, Obj *val)
 // Interpreter methods on AST classes
 ////////////////////////////////////////////////////////////////////////////////
 
+void Statements::skip_to(Interpreter::Context &c, Statement* ast_node) {
+	for (auto &s : statements) {
+		if (c.isReturning) {
+			return;
+		}
+		if (c.astNodeFound) {
+			s->interpret(c);
+		} else {
+			s->skip_to(c, ast_node);
+		}
+	}
+}
+
+
 void Statements::interpret(Interpreter::Context &c)
 {
 	for (auto &s : statements)
 	{
-		// If we've executed a return statement, then stop executing.
+	// If we've executed a return statement, then stop executing.
 		if (c.isReturning)
 		{
 			return;
@@ -395,6 +417,7 @@ void Statements::collectVarUses(std::unordered_set<std::string> &decls,
 		s->collectVarUses(decls, uses);
 	}
 }
+
 
 Obj Expression::evaluate(Interpreter::Context &c)
 {
@@ -414,13 +437,12 @@ Obj Expression::evaluate(Interpreter::Context &c)
 	return r;
 }
 
-Obj Call::evaluateExpr(Interpreter::Context &c)
-{
+Obj Call::do_call(Interpreter::Context &c, Obj obj) {
+
 	// Array of arguments.  
 	Obj args[10];
 	// Get the callee, which is either a closure or some other object that will
 	// have a method on it invoked.
-	Obj obj = callee->evaluate(c);
 	assert(obj);
 	auto &argsAST = arguments->arguments;
 	size_t i=0;
@@ -457,14 +479,6 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 		}
 	}
 
-//	if (cls == cachedClass) {
-//		if (cachedMethod != nullptr)  {
-//			return callCompiledMethod(*cachedMethod, obj, sel, args, arguments->arguments.size());
-//		}
-//	}// else {
-//		cachedClass = cls;
-	//}
-
 
 	CompiledMethod *mth;
 	if (cls == cachedClass && cachedMethod != nullptr) {
@@ -478,6 +492,21 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 	
 	// Call the method.
 	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
+}
+
+Obj Call::expr_skip_to(Interpreter::Context &c, Statement* ast_node) override  { 
+	Obj obj = callee->expr_skip_to(c, ast_node);
+	if (!c.astNodeFound) {
+		return nullptr;		// irrelevant, doesn't contain AST node we want
+	} else { // node was found!!
+		return do_call(c, obj);	// continue as interpreter!		
+	}
+}
+
+Obj Call::evaluateExpr(Interpreter::Context &c)
+{
+	Obj obj = callee->evaluate(c);
+	return do_call(c, obj);
 }
 
 Obj VarRef::evaluateExpr(Interpreter::Context &c)
@@ -527,6 +556,32 @@ void ClosureDecl::collectVarUses(std::unordered_set<std::string> &decls,
 	// Add the name of this closure to the declared list in the enclosing scope.
 	decls.insert(name);
 }
+
+
+/*
+ * THIS is the root of the skip_to call due to method-granularity JITing
+ * the symbol table should all be set up right from the preceeding reconstructInterpreter call
+ * which copies the JIT symbol table into the interpreter symbol table
+ * including the self and cmd values! TODO hope this works
+ */
+
+Obj ClosureDecl::expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
+	// Interpret the statements in this method;
+	body->skip_to(c);
+	assert(c.astNodeFound || "Searched ClosureDecl body for node but astNodeFound is false?");
+	// Return the return value.  Make sure it's set back to nullptr after we've
+	// copied it so that we always return null from any method that doesn't
+	// explicitly return.
+	Obj retVal = c.retVal;
+	c.retVal = nullptr;
+	c.isReturning = false;
+	c.astNodeFound = false; // reset
+	// Pop the symbols off the symbol table (very important, as they reference
+	// this stack frame!
+	c.popSymbols();	
+	return retVal;
+}
+
 
 Obj ClosureDecl::evaluateExpr(Interpreter::Context &c)
 {
@@ -620,7 +675,7 @@ Obj ClosureDecl::interpretMethod(Interpreter::Context &c, Method *mth, Obj self,
 	c.retVal = nullptr;
 	c.isReturning = false;
 	// Pop the symbols off the symbol table (very important, as they reference
-	// our stack frame!)
+	// our stack frame!
 	c.popSymbols();
 	return retVal;
 }
@@ -681,6 +736,9 @@ Obj ClosureDecl::interpretClosure(Interpreter::Context &c, Closure *self,
 	return retVal;
 }
 
+// StringLiteral shouldn't need a specialized skip_to method...
+// Obj StringLiteral::skip_to(Interpreter::Context &c, Statement* ast_node) override;
+
 Obj StringLiteral::evaluateExpr(Interpreter::Context &c)
 {
 	// Construct a string object.
@@ -695,6 +753,26 @@ Obj StringLiteral::evaluateExpr(Interpreter::Context &c)
 	return reinterpret_cast<Obj>(str);
 }
 
+
+void IfStatement::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+	// check the condition
+	// if it contains the node we're looking for, take the result of that expression
+	// do the same check as the interpret  method
+	// and interpret the body
+	Obj cond = condition->expr_skip_to(c, ast_node);
+	if (c.astNodeFound && ((reinterpret_cast<intptr_t>(cond)) & ~7)) {
+		body->interpret(c);
+		return;
+	}
+
+	// check the body
+	// if the node we're looking for is in it, the condition is true
+	// also the skip_to will have finished evaluting the body
+	// so just need to run skip_to on it
+	body->skip_to(c, ast_node);
+
+}
+
 void IfStatement::interpret(Interpreter::Context &c)
 {
 	if ((reinterpret_cast<intptr_t>(condition->evaluate(c))) & ~7)
@@ -702,6 +780,34 @@ void IfStatement::interpret(Interpreter::Context &c)
 		body->interpret(c);
 	}
 }
+
+void WhileLoop::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+	// check the condition
+	// if it contains the node we want, take the result of that expression and continue as interpreter
+	
+
+	// TODO how to handle isReturning here...
+	// I'm quite sure isReturning can never be true if we're in skip_to not having found the node yet
+	// IE. if we're in the condition, we can never returning from a method/function
+//	if (!c.isReturning) {
+//
+	Obj cond = condition->expr_skip_to(c, ast_node);
+	if (c.astNodeFound && (reinterpret_cast<intptr_t>(condition->evaluate(c))) & ~7) {
+		body->interpret(c);
+		// now we can just resume the loop in the usual interpret()
+		interpret(c);
+		return;
+	}
+
+	// otherwise we can check the body
+	body->skip_to(c, ast_node);
+	if (c.astNodeFound) {
+		// found the node! continue interpreting 
+		interpret(c);
+	}
+	// otherwise keep tree searching
+}
+
 void WhileLoop::interpret(Interpreter::Context &c)
 {
 	while (!c.isReturning && (reinterpret_cast<intptr_t>(condition->evaluate(c))) & ~7)
@@ -709,6 +815,19 @@ void WhileLoop::interpret(Interpreter::Context &c)
 		body->interpret(c);
 	}
 }
+
+Obj Decl::skip_to(Intepreter::Context &c, Statement* ast_node) override {
+	Obj v = nullptr;
+	if (init) {
+		v = init->expr_skip_to(c, ast_node);
+		if (c.astNodeFound) { //ie. the node to resume at is below this node in the AST
+			c.setSymbol(name, v);
+		}
+	}
+	return nullptr; //doesn't matter, ignoring anyway in DFS
+}
+
+
 void Decl::interpret(Interpreter::Context &c)
 {
 	// Declarations don't normally allocate space for variables, but at the
@@ -721,15 +840,19 @@ void Decl::interpret(Interpreter::Context &c)
 	c.setSymbol(name, v);
 }
 
+void Assignment::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+	Obj result = expr->expr_skip_to(c, ast_node);
+	if (c.astNodeFound) {
+		c.setSymbol(target->name, result);
+	}
+}
+
 void Assignment::interpret(Interpreter::Context &c)
 {
 	c.setSymbol(target->name, expr->evaluate(c));
 }
 
-Obj BinOpBase::evaluateExpr(Interpreter::Context &c)
-{
-	Obj LHS = lhs->evaluate(c);
-	Obj RHS = rhs->evaluate(c);
+Obj BinOpBase::performOp(Interpreter::Context &c, Obj LHS, Obj RHS) {
 	// If this is a comparison, then we're doing a pointer-compare even if
 	// they're objects.  If both sides are small integers, then ask the subclass
 	// to look up their integer values.
@@ -751,6 +874,56 @@ Obj BinOpBase::evaluateExpr(Interpreter::Context &c)
 	return (reinterpret_cast<Obj(*)(Obj,Selector,Obj)>(mth))(LHS, sel, RHS);
 }
 
+
+Obj BinOpBase::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+	Obj LHS = lhs->expr_skip_to(c, ast_node);
+	// LHS contains node we're looking for, interpret RHS and OP
+	if (c.astNodeFound) {
+		Obj RHS = rhs->evaluate(c);
+		return performOp(c, LHS, RHS);
+	}
+
+	Obj RHS = rhs->expr_skip_to(c, ast_node);
+	if (c.astNodeFound) {
+		// TODO get the LHS from the compiled execution of lhs
+		Obj LHS_compiled_val = nullptr;
+		return performOp(c, LHS_compiled_val, RHS)
+	}
+
+	// the binary op itself shouldn't be what we're looking for...?
+	if (this == ast_node) {
+		llvm::errs() << "HELP BinOp matched ast_node, this is unimplemented\n";
+		c.astNodeFound = true;
+	}
+
+	return nullptr; //doesn't matter, will be ignored since didn't find ast node
+
+}
+
+
+Obj BinOpBase::evaluateExpr(Interpreter::Context &c)
+{
+	Obj LHS = lhs->evaluate(c);
+	Obj RHS = rhs->evaluate(c);
+	return performOp(c, LHS, RHS);
+}
+
+void Return::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+	Obj ret_val = expr->expr_skip_to(c, ast_node);
+	if (c.astNodeFound) {
+		c.retVal = ret_val;
+		c.isReturning = true;
+		return;
+	} 
+
+	if (this == ast_node) {
+		llvm::errs() << "HELP Return matched ast_node, this is unimplemented\n";
+		c.astNodeFound = true;
+	}
+}
+
+
+
 void Return::interpret(Interpreter::Context &c)
 {
 	// Evaluate the returned expression and then indicate in the interpreter
@@ -758,6 +931,7 @@ void Return::interpret(Interpreter::Context &c)
 	c.retVal = expr->evaluate(c);
 	c.isReturning = true;
 }
+
 
 void ClassDecl::interpret(Interpreter::Context &c)
 {
