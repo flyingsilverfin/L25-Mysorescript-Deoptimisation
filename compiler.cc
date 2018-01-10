@@ -592,7 +592,6 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	Value *cond = c.B.CreateCondBr(isInt, smallIntBB, clsBB);
 
-	
 	// Basic Block to get cls if it is any Object other than SmallIntClass
 	c.B.SetInsertPoint(clsBB);
 

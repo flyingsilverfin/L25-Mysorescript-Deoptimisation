@@ -480,7 +480,7 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 		}
 	}
 
-
+	// inline caching
 	CompiledMethod *mth;
 	if (cls == cachedClass && cachedMethod != nullptr) {
 		mth = cachedMethod;
