@@ -9,6 +9,8 @@ static_assert(sizeof(void*) == 8,
 	"MysoreScript only supports 64-bit platforms currently");
 
 namespace {
+
+
 /**
  * Typesafe helper function for allocating garbage-collected memory.  Allocates
  * enough memory for one instance of the specified type, plus the number of
@@ -28,6 +30,8 @@ namespace AST
 
 namespace MysoreScript
 {
+
+uint64_t get_next_stackmap_id(); 
 
 struct Object;
 struct Closure;
@@ -102,6 +106,10 @@ struct Method
 	AST::ClosureDecl *AST;
 };
 
+
+// typedef Obj (*ResumeInInterpreterFunc)(AST::Statement*, AST::ClosureDecl*);
+
+
 /**
  * Struct holding metadata about a class.  The first field of all instances of
  * a class will point to one of these structures.
@@ -134,6 +142,11 @@ struct Class
 	 * The names of the instance variables.
 	 */
 	const char         **indexedIVarNames;
+
+
+
+//	static ResumeInInterpreterFunc resumeInInterpreter;
+
 };
 
 /**

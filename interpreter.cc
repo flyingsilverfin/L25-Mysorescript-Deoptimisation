@@ -21,6 +21,16 @@ inline bool needsGC(Obj o)
 
 Interpreter::Context *currentContext;
 
+void reconstructInterpreter(void *sp, void *bp) {
+	std::cerr << "In reconstructInterpreter\n";
+}
+
+//Obj resumeInInterpreter(Statement* ast_node, Statement* ClosureDecl) {
+//	std::cerr << "Jumped back to interpreter!" << std::endl;
+//}
+
+
+
 using MysoreScript::Closure;
 /**
  * 0-argument trampoline for jumping back into the interpreter when a closure
@@ -272,6 +282,13 @@ CompiledMethod methodTrampolines[] = {
 
 namespace Interpreter
 {
+
+
+	void reconstructInterpreterContext(void *sp, void *bp) {
+		reconstructInterpreter(sp, bp);
+	}
+
+
 /**
  * Array of trampolines, indexed by number or arguments.  
  */
@@ -503,7 +520,7 @@ void ClosureDecl::check()
 void ClosureDecl::collectVarUses(std::unordered_set<std::string> &decls,
                                  std::unordered_set<std::string> &uses)
 {
-	// Find all of the variables that are used by this closure.
+	// Find all of the vggariables that are used by this closure.
 	check();
 	// Add any bound variables to the use list
 	uses.insert(boundVars.begin(), boundVars.end());
@@ -747,6 +764,12 @@ void ClassDecl::interpret(Interpreter::Context &c)
 	// Construct the new class.  The class table persists over the lifetime of
 	// the program, so memory allocated here is never freed.
 	Class *cls = new Class();
+
+	// set static pointer to resumeInInterpreter
+//	Class::resumeInInterpreter = resumeInInterpreter;
+
+
+
 	// Due to the way automatic AST construction works, we'll end up with the
 	// class name in the superclass name field if we don't have a superclass.
 	std::string &clsName = name ? *name : superclassName;

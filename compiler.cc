@@ -7,6 +7,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/TargetSelect.h>
 
+
 using namespace llvm;
 using llvm::legacy::PassManager;
 using namespace MysoreScript;
@@ -621,8 +622,89 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	// slow path
 	c.B.SetInsertPoint(slow);
-	//old code
-	// Get the lookup function
+
+
+
+// first attempt at stackmap!
+
+	std::vector<Type *> arg_types;
+	std::vector<Value *> stackmap_args;
+	
+	// insert return type first?
+	arg_types.push_back(Type::getVoidTy(c.C));	
+
+
+	// stackmap ID
+	// ask runtime for next stackmap ID
+	Value *id = ConstantInt::get(c.ObjIntTy, get_next_stackmap_id()); 
+	Type *id_type = id->getType();
+	arg_types.push_back(id_type);
+	stackmap_args.push_back(id);
+
+	// reverved bytes - not doing code patching so 0 bytes
+	Value *reserved_bytes = ConstantInt::get(Type::getInt32Ty(c.C), 0);
+	Type *bytes_type = reserved_bytes->getType();
+	arg_types.push_back(bytes_type);
+	stackmap_args.push_back(reserved_bytes);
+
+	// pointer to `symbols` in the compiler context, needed to reconstruct interpreter
+	Value *symbols_ptr = staticAddress(c, &c.symbols, c.ObjPtrTy, "Context Symbols Pointer");
+//	LLVMTypeRef symbols_ptr_ty = llvm::wrap(symbols_ptr->getType())
+	Type *symbols_ptr_ty = symbols_ptr->getType();
+	arg_types.push_back(symbols_ptr_ty);
+	stackmap_args.push_back(symbols_ptr);
+
+	// create call to stackmap intrinsic
+
+	ArrayRef<Type*> args_aref(arg_types.data(), arg_types.size());
+
+	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_stackmap, args_aref);
+	c.B.CreateCall(fun, stackmap_args, "invokestackmap");
+
+	// note, may need to convert vector to array
+//	LLVMValueRef fn = LLVMAddFunction(c.M, "llvm.experimental.stackmap", arg_types);
+
+	// perform call to stackmap intrinsic
+    //   create a builder
+//	LLVMBuilderRef builderRef = llvm::wrap(&c.B);
+	// do call to intrinsic
+//	LLVMBuildCall(builderRef, fn, arg_types.data(), stackmap_args.data(), false);
+
+
+	// now need to call with anyregcc to a custom assembly function which
+	// 1. saves registers in order onto the stack
+	// 2. calls interpreter ReconstructContext
+	// 3. pops registers and return address put on stack by anyregcc call
+	// 4. pops JIT stack frame except the return address
+	// 5. calls (?jump?) to ResumeInterpret
+
+	// args type
+//	ArrayRef<Type*> asm_arg_types(llvm::NoneType); // no args for testing
+//	Function* asm_call = c.M->getFunction
+//	CallInst *asm_call = 
+
+	
+	// --- arguments for the anyregcc call ---
+	// AST Node to resume at
+///	arg_type.push_back(llvm::wrap(dynamic_cast<c.ObjPtrTy>(this))); // pointer to this AST node, should be doable with a static cast
+//	args.push_back(llvm::wrap(this));
+//
+	// need to figure out the nearest enclosing ClosureDecl
+//	ASTNode* ast_ptr = this;				// should impliclty upcast
+//	while (!ast_ptr->isa<ClosureDecl>()) {
+//		ast_ptr = ast_ptr->parent();	// Pegmatite AST methods
+//	}
+	
+	// Second arugment to target function, the Enclosing Closure that was compiled
+//	arg_type.push_back(dynamic_cast<c.ObjPtrTy>(ast_ptr));
+//	args.push_back(llvm::wrap(ast_ptr));
+
+
+	
+
+
+
+
 	Constant *lookupFn = c.M->getOrInsertFunction("compiledMethodForSelector",
 			methodType->getPointerTo(), obj->getType(), c.SelTy);
 	// Insert the call to the function that performs the lookup.  This will

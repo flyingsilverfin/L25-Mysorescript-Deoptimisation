@@ -9,8 +9,17 @@
 
 using namespace MysoreScript;
 
+// forward declare
+namespace Interpreter {
+	void reconstructInterpreterContext(void *, void*);
+}
+
+
 namespace
 {
+
+	uint64_t stackmap_id = 0;
+
 
 /**
  * Global vector of selector names.  This is used to map from a selector to a
@@ -488,6 +497,13 @@ const char *FileIvars[] = { "fd" };
 
 namespace MysoreScript
 {
+
+
+uint64_t get_next_stackmap_id() {
+	return stackmap_id++;
+}
+
+	
 /**
  * The `String` class structure.
  */
@@ -724,6 +740,12 @@ Obj callCompiledClosure(ClosureInvoke m, Closure *receiver, Obj *args,
 
 extern "C"
 {
+
+	void reconstructInterpreter(void *sp, void *bp) {
+		Interpreter::reconstructInterpreterContext(sp, bp);
+	}
+
+
 Obj mysoreScriptAdd(Obj lhs, Obj rhs)
 {
 
@@ -782,7 +804,7 @@ Class *getClassFor(Obj obj)
 
 CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
 {
-printf("Called compiledMethodForSelector!\n");
+//printf("Called compiledMethodForSelector!\n");
 	Class *cls = getClassFor(obj);
 	if (cls == nullptr){
 		return reinterpret_cast<CompiledMethod>(invalidMethod);

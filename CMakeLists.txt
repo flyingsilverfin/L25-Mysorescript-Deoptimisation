@@ -29,7 +29,7 @@ else()
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
 
-
+message(STATUS "TESTING")
 
 # Find the Boehm GC stuff
 include(FindPkgConfig)

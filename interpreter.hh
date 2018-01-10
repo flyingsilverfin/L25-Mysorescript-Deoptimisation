@@ -7,6 +7,12 @@
 
 namespace Interpreter
 {
+
+
+	// pass through function
+	void reconstructInterpreterContext(void *sp, void *bp);
+
+
 	/**
 	 * Force the compiler to run.  This overrides the compile threshold and
 	 * ensures that all methods and closures are compiled the first time that
