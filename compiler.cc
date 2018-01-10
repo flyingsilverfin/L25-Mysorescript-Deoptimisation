@@ -499,7 +499,7 @@ Value* is_int_obj /* i1 */ = c.B.CreateIsNotNull(tmp, "is_int_obj");
 BasicBlock* if_is_int_obj_then = BasicBlock::Create(c.C, "if_is_int_obj.then", c.F);
 BasicBlock* if_is_int_obj_else = BasicBlock::Create(c.C, "if_is_int_obj.else", c.F);
 c.B.CreateCondBr(is_int_obj, if_is_int_obj_then, if_is_int_obj_else);
- /* DEBUG */ if_not_null_obj_body->dump();
+ /* DEBUG */ // if_not_null_obj_body->dump();
 
  c.B.SetInsertPoint(if_is_int_obj_then);
  /* Ask about this  */

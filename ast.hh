@@ -524,7 +524,7 @@ namespace AST
 		 * The interpreter is faster to start than the compiler, but is vastly
 		 * slower.
 		 */
-		static const int compileThreshold = 10;
+		static const int compileThreshold = 10000000;
 		/**
 		 * The number of times this closure has been interpreted.  Used to
 		 * determine whether it is now worthwhile to compile it.
