@@ -20,6 +20,8 @@ T* gcAlloc(size_t extraBytes=0)
 	size_t size = sizeof(T) + extraBytes;
 	return reinterpret_cast<T*>(GC_MALLOC(size));
 }
+
+uint64_t methods_searched = 0;
 }
 namespace AST
 {
@@ -28,6 +30,7 @@ namespace AST
 
 namespace MysoreScript
 {
+
 
 struct Object;
 struct Closure;

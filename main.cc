@@ -36,6 +36,7 @@
 #include "parser.hh"
 #include "interpreter.hh"
 
+
 /**
  * Flag indicating whether we should print timing information.
  */
@@ -144,6 +145,7 @@ int main(int argc, char **argv)
 		// Now interpret the parsed 
 		ast->interpret(C);
 		logTimeSince(c1, "Executing program");
+//		std::cerr << "Total iterations searching for methods: " << MysoreScript::methods_searched << std::endl;
 	}
 	// Keep all of the ASTs that we've parsed in the REPL environment in case
 	// anything is referencing them.

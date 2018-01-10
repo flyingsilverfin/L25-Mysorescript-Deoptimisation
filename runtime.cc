@@ -12,6 +12,7 @@ using namespace MysoreScript;
 namespace
 {
 
+
 /**
  * Global vector of selector names.  This is used to map from a selector to a
  * string value.
@@ -616,12 +617,15 @@ Obj newObject(struct Class *cls)
 
 Method *methodForSelector(Class *cls, Selector sel)
 {
+	
+	//std::cerr << "Methods searched so far: " << methods_searched << std::endl;
 	// Perform a very simple linear search (O(n) in the number of methods in the
 	// class hierarchy) to find the relevant method.
 	for (; cls ; cls = cls->superclass)
 	{
 		for (intptr_t i=0 ; i<cls->methodCount; i++)
 		{
+			methods_searched++;
 			if (cls->methodList[i].selector == sel)
 			{
 				return &cls->methodList[i];
