@@ -456,23 +456,18 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 		}
 	}
 
-	CompiledMethod *mth = nullptr;
-	if (ptrToCachedMethod != nullptr && cls == cachedClass) {
-		mth = ptrToCachedMethod;
-		counter1++;
+	if (cls == cachedClass) {
+		if (ptrToCachedMethod != nullptr) {
+			return callCompiledMethod(*ptrToCachedMethod, obj, sel, args, arguments->arguments.size());
+		}	
 	} else {
-		mth = ptrToCompiledMethodForSelector(obj, sel);
-		ptrToCachedMethod = mth;
 		cachedClass = cls;
-		counter2++;
 	}
-
-	if (counter1 + counter2 > 1000000-10) {
-		printf("fast path: %lu, slow path: %lu\n", counter1, counter2);
-	}
-
+	
+	CompiledMethod *mth = ptrToCompiledMethodForSelector(obj, sel);;
 	assert(mth && *mth);
 	// Call the method.
+	ptrToCachedMethod = mth;
 	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
 }
 
