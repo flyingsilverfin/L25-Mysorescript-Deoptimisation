@@ -3,9 +3,13 @@
 #include "compiler.hh"
 #include "ast.hh"
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/TargetSelect.h>
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+//#include <llvm/Codegen/
+
 
 using namespace llvm;
 using llvm::legacy::PassManager;
@@ -82,9 +86,27 @@ Compiler::Context::Context(Interpreter::SymbolTable &g) :
 	// are not removed by the linker.
 	LLVMInitializeNativeTarget();
 	InitializeNativeTargetAsmPrinter();
+	InitializeNativeTargetAsmPrinter();
 	LLVMLinkInMCJIT();
 
 }
+
+// LLVMMemoryManagerAllocateDataSectionCallback
+//uint8_t* dataSectionAllocated(void *Opaque, uintptr_t Size, unsigned Alignment, unsigned SectionID, const char *SectionName, LLVMBool IsReadOnly) {
+//	std::cerr << "Got data section allocated: " << SectionName;
+//}
+
+
+class JITMemoryManager : public SectionMemoryManager 
+{
+	//only going to override allocateDataSection
+	uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment, unsigned SectionID, StringRef SectionName, bool isReadOnly) {
+		std::cerr << "Got data section allocated: " << SectionName.data() << std::endl;
+		auto loc = SectionMemoryManager::allocateDataSection(Size, Alignment, SectionID, SectionName, isReadOnly);
+		return loc;
+	}
+};
+
 
 Value *Compiler::Context::lookupSymbolAddr(const std::string &str)
 {
@@ -111,7 +133,6 @@ ClosureInvoke Compiler::Context::compile()
 	PassManager MPM;
 	PassManagerBuilder Builder;
 
-// I think this is broken...
 //	Builder.addExtension(PassManagerBuilder::EP_LoopOptimizerEnd, addSplitArithmeticPass);
 
 	Builder.OptLevel = 2;
@@ -141,9 +162,16 @@ ClosureInvoke Compiler::Context::compile()
 	std::string FunctionName = F->getName();
 	std::string err;
 	EngineBuilder EB(std::move(M));
+
+	// create custom memory manager to capture StackMap section
+	//JITMemoryManager jit_mm;
+
+	std::unique_ptr<RTDyldMemoryManager> mm_ptr(new JITMemoryManager());
+
 	// Construct an execution engine (JIT)
 	ExecutionEngine *EE = EB.setEngineKind(EngineKind::JIT)
 		.setErrorStr(&err)
+		.setMCJITMemoryManager(std::move(mm_ptr))
 		.create();
 	if (!EE)
 	{
@@ -151,6 +179,11 @@ ClosureInvoke Compiler::Context::compile()
 				err.c_str());
 		return nullptr;
 	}
+
+
+
+
+
 	// Use the execution engine to compile the code.  Note that we leave the
 	// ExecutionEngine live here because it owns the memory for the function.
 	// It would be better to provide our own JIT memory manager to manage the

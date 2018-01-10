@@ -23,12 +23,13 @@ Interpreter::Context *currentContext;
 
 using MysoreScript::Closure;
 
+/*
+Obj resumeInInterpreter(Statement* astNode, ClosureDecl* root, ...stackmap info?
+{
+	
 
-//Obj resumeInInterpreter(ASTNode, live_vars
 
-
-
-
+*/
 
 /**
  * 0-argument trampoline for jumping back into the interpreter when a closure
@@ -494,7 +495,7 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
 }
 
-Obj Call::expr_skip_to(Interpreter::Context &c, Statement* ast_node) override  { 
+Obj Call::expr_skip_to(Interpreter::Context &c, Statement* ast_node) { 
 	Obj obj = callee->expr_skip_to(c, ast_node);
 	if (!c.astNodeFound) {
 		return nullptr;		// irrelevant, doesn't contain AST node we want
@@ -565,9 +566,9 @@ void ClosureDecl::collectVarUses(std::unordered_set<std::string> &decls,
  * including the self and cmd values! TODO hope this works
  */
 
-Obj ClosureDecl::expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
+Obj ClosureDecl::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
 	// Interpret the statements in this method;
-	body->skip_to(c);
+	body->skip_to(c, ast_node);
 	assert(c.astNodeFound || "Searched ClosureDecl body for node but astNodeFound is false?");
 	// Return the return value.  Make sure it's set back to nullptr after we've
 	// copied it so that we always return null from any method that doesn't
@@ -737,7 +738,7 @@ Obj ClosureDecl::interpretClosure(Interpreter::Context &c, Closure *self,
 }
 
 // StringLiteral shouldn't need a specialized skip_to method...
-// Obj StringLiteral::skip_to(Interpreter::Context &c, Statement* ast_node) override;
+// Obj StringLiteral::skip_to(Interpreter::Context &c, Statement* ast_node) ;
 
 Obj StringLiteral::evaluateExpr(Interpreter::Context &c)
 {
@@ -754,7 +755,7 @@ Obj StringLiteral::evaluateExpr(Interpreter::Context &c)
 }
 
 
-void IfStatement::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+void IfStatement::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	// check the condition
 	// if it contains the node we're looking for, take the result of that expression
 	// do the same check as the interpret  method
@@ -781,7 +782,7 @@ void IfStatement::interpret(Interpreter::Context &c)
 	}
 }
 
-void WhileLoop::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+void WhileLoop::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	// check the condition
 	// if it contains the node we want, take the result of that expression and continue as interpreter
 	
@@ -816,7 +817,7 @@ void WhileLoop::interpret(Interpreter::Context &c)
 	}
 }
 
-Obj Decl::skip_to(Intepreter::Context &c, Statement* ast_node) override {
+void Decl::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj v = nullptr;
 	if (init) {
 		v = init->expr_skip_to(c, ast_node);
@@ -824,7 +825,6 @@ Obj Decl::skip_to(Intepreter::Context &c, Statement* ast_node) override {
 			c.setSymbol(name, v);
 		}
 	}
-	return nullptr; //doesn't matter, ignoring anyway in DFS
 }
 
 
@@ -840,7 +840,7 @@ void Decl::interpret(Interpreter::Context &c)
 	c.setSymbol(name, v);
 }
 
-void Assignment::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+void Assignment::skip_to(Interpreter::Context &c, Statement* ast_node)  {
 	Obj result = expr->expr_skip_to(c, ast_node);
 	if (c.astNodeFound) {
 		c.setSymbol(target->name, result);
@@ -875,7 +875,7 @@ Obj BinOpBase::performOp(Interpreter::Context &c, Obj LHS, Obj RHS) {
 }
 
 
-Obj BinOpBase::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+Obj BinOpBase::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj LHS = lhs->expr_skip_to(c, ast_node);
 	// LHS contains node we're looking for, interpret RHS and OP
 	if (c.astNodeFound) {
@@ -887,12 +887,12 @@ Obj BinOpBase::skip_to(Interpreter::Context &c, Statement* ast_node) override {
 	if (c.astNodeFound) {
 		// TODO get the LHS from the compiled execution of lhs
 		Obj LHS_compiled_val = nullptr;
-		return performOp(c, LHS_compiled_val, RHS)
+		return performOp(c, LHS_compiled_val, RHS);
 	}
 
 	// the binary op itself shouldn't be what we're looking for...?
 	if (this == ast_node) {
-		llvm::errs() << "HELP BinOp matched ast_node, this is unimplemented\n";
+		std::cerr << "HELP BinOp matched ast_node, this is unimplemented" << std::endl;
 		c.astNodeFound = true;
 	}
 
@@ -908,7 +908,7 @@ Obj BinOpBase::evaluateExpr(Interpreter::Context &c)
 	return performOp(c, LHS, RHS);
 }
 
-void Return::skip_to(Interpreter::Context &c, Statement* ast_node) override {
+void Return::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj ret_val = expr->expr_skip_to(c, ast_node);
 	if (c.astNodeFound) {
 		c.retVal = ret_val;
@@ -917,7 +917,7 @@ void Return::skip_to(Interpreter::Context &c, Statement* ast_node) override {
 	} 
 
 	if (this == ast_node) {
-		llvm::errs() << "HELP Return matched ast_node, this is unimplemented\n";
+		std::cerr << "HELP Return matched ast_node, this is unimplemented" << std::endl;
 		c.astNodeFound = true;
 	}
 }
