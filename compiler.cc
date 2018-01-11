@@ -201,8 +201,8 @@ ClosureInvoke Compiler::Context::compile()
 	ExecutionEngine *EE = EB.setEngineKind(EngineKind::JIT)
 		.setErrorStr(&err)
 //		.setMCJITMemoryManager(std::move(mm_ptr))
-		//.create(tm);
-		.create();
+		.create(tm);
+		//.create();
 
 	EE->RegisterJITEventListener(new StackmapJITEventListener());
 	if (!EE)
@@ -686,7 +686,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 
 
-// first attempt at stackmap!
+//attempt at patchpoints/stackmaps!
 
 	std::vector<Type *> arg_types;
 	std::vector<Value *> stackmap_args;
@@ -697,7 +697,8 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	// stackmap ID
 	// ask runtime for next stackmap ID
-	Value *id = ConstantInt::get(c.ObjIntTy, get_next_stackmap_id()); 
+	uint64_t stackmap_id = get_next_stackmap_id();
+	Value *id = ConstantInt::get(c.ObjIntTy, stackmap_id); 
 	Type *id_type = id->getType();
 	arg_types.push_back(id_type);
 	stackmap_args.push_back(id);
@@ -711,12 +712,6 @@ Value *Call::compileExpression(Compiler::Context &c)
 	arg_types.push_back(bytes_type);
 	stackmap_args.push_back(reserved_bytes);
 /*
-	// pointer to `symbols` in the compiler context, needed to reconstruct interpreter
-	Value *symbols_ptr = staticAddress(c, &c.symbols, c.ObjPtrTy, "Context Symbols Pointer");
-	Type *symbols_ptr_ty = symbols_ptr->getType();
-	arg_types.push_back(symbols_ptr_ty);
-	stackmap_args.push_back(symbols_ptr);
-
 	// create call to stackmap intrinsic
 
 	ArrayRef<Type*> args_aref(arg_types.data(), arg_types.size());
@@ -731,9 +726,6 @@ Value *Call::compileExpression(Compiler::Context &c)
 	// ---patchpoint not stackmap---
 	// function to call
 	Constant *func = c.M->getOrInsertFunction("testCall", Type::getVoidTy(c.C), Type::getInt32Ty(c.C));
-	//llvm::errs() << "func type: ";
-	//func->getType()->dump();
-	//llvm::errs() << "\n";
 	Value *func_i8ptr = c.B.CreateBitCast(func, Type::getInt8PtrTy(c.C));
 	stackmap_args.push_back(func_i8ptr); // needs an i8*... not sure what getOrInsert returns
 
@@ -742,14 +734,19 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	// arguments to the function
 	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C),100));
-	
+
+
+	// pointer to `symbols` in the compiler context, needed to reconstruct interpreter
+	// this goes in stackmap...
+	Value *symbols_ptr = staticAddress(c, &c.symbols, c.ObjPtrTy, "Context Symbols Pointer");
+	stackmap_args.push_back(symbols_ptr);
+
+// 	
 
 	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_patchpoint_void);
-	//llvm::errs() << "Intrinsic required type: ";
-	//fun->getFunctionType()->dump();
-	//llvm::errs() << "\n";
-	
-	c.B.CreateCall(fun, stackmap_args);	
+	CallInst *func_call = CallInst::Create(fun, stackmap_args);
+	func_call->setCallingConv(CallingConv::AnyReg);
+	c.B.Insert(func_call);
 
 
 	// now need to call with anyregcc to a custom assembly function which

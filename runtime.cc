@@ -744,6 +744,20 @@ void testCall(uint32_t val) {
 	std::cerr << "Got value: " << val << std::endl;
 }
 
+// TODO
+// create a void function that is the target of the patchpoint call
+// can't pass any arguments since the C argument registers will have been repurposed
+// write the registers to the stack
+// call into interpreter with stack pointer and bp so it knows where the registers have been pushed
+// (fixed order of pushiing)
+// use the stackmap to fish out values from the registers + memory locations
+// ie. arguments we want: ASTNodes target and root
+// stackmap will contain location of symbol table
+// deal with live variables later
+
+
+//void trampoline(uint64_t stackmap_id
+
 void reconstructInterpreter(void *sp, void *bp) {
 	Interpreter::reconstructInterpreterPassthrough(sp, bp);
 }
