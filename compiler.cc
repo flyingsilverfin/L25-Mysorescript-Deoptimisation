@@ -6,7 +6,7 @@
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/TargetSelect.h>
-
+#include <llvm/IR/Intrinsics.h>
 
 using namespace llvm;
 using llvm::legacy::PassManager;
@@ -631,7 +631,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 	std::vector<Value *> stackmap_args;
 	
 	// insert return type first?
-	arg_types.push_back(Type::getVoidTy(c.C));	
+//	arg_types.push_back(Type::getVoidTy(c.C));	
 
 
 	// stackmap ID
@@ -658,17 +658,9 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	ArrayRef<Type*> args_aref(arg_types.data(), arg_types.size());
 
-	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_stackmap, args_aref);
-	c.B.CreateCall(fun, stackmap_args, "invokestackmap");
-
-	// note, may need to convert vector to array
-//	LLVMValueRef fn = LLVMAddFunction(c.M, "llvm.experimental.stackmap", arg_types);
-
-	// perform call to stackmap intrinsic
-    //   create a builder
-//	LLVMBuilderRef builderRef = llvm::wrap(&c.B);
-	// do call to intrinsic
-//	LLVMBuildCall(builderRef, fn, arg_types.data(), stackmap_args.data(), false);
+	// don't actually need to pass types to intrisic declaration!
+	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_stackmap);//, args_aref);
+	c.B.CreateCall(fun, stackmap_args, "invoke stackmap");
 
 
 	// now need to call with anyregcc to a custom assembly function which
