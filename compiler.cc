@@ -1,3 +1,4 @@
+#include <iostream>
 #include <functional>
 #include "interpreter.hh"
 #include "compiler.hh"
@@ -8,6 +9,9 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/IR/Intrinsics.h>
 #include <llvm/Target/TargetMachine.h>
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
+#include "StackMapParser.cpp"
 
 using namespace llvm;
 using llvm::legacy::PassManager;
@@ -106,6 +110,52 @@ Value *Compiler::Context::lookupSymbolAddr(const std::string &str)
 	llvm_unreachable("Symbol not found");
 }
 
+
+// custong memory manager to get a hold of the stack map section address!
+// RIGHT this doesn't work!!
+/*class JITMemoryManager : public SectionMemoryManager                                                          
+{                                                                                                             
+	uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment, unsigned SectionID, StringRef SectionName, bool isReadOnly) {
+
+		std::cerr << "DataSection: " << SectionID << std::endl;
+
+		uint8_t *loc = SectionMemoryManager::allocateDataSection(Size, Alignment, SectionID, SectionName, isReadOnly);
+		if (SectionName == ".llvm_stackmaps") {
+			std::cerr << "Found LLVm stackmap section! At: " << static_cast<void*>(loc) << std::endl;
+			std::cerr << "Size requested: " << Size << ", SectionID: " << SectionID << ", SectionName: " << SectionName.data()<< std::endl;
+			
+			// construct a new StackMapParser with this location
+			StackMapParser smparser(loc);
+			std::cerr << "Number of stackmap records: " << smparser.getNumRecords() << std::endl;
+
+		}
+        return loc;                                                                                           
+     }                                                                                                         
+};        
+*/
+
+// THIS WORKS!
+// THANK YOU PYSTON & OPEN SOURCE
+class StackmapJITEventListener : public llvm::JITEventListener {
+	private:
+	public:
+    virtual void NotifyObjectEmitted(const llvm::object::ObjectFile&, const llvm::RuntimeDyld::LoadedObjectInfo&);
+};
+
+void StackmapJITEventListener::NotifyObjectEmitted(const llvm::object::ObjectFile& Obj,
+		                                                   const llvm::RuntimeDyld::LoadedObjectInfo& L) {
+	for (const auto& sec : Obj.sections()) {
+		llvm::StringRef name;
+		sec.getName(name);
+		if (name == ".llvm_stackmaps") {
+			uint64_t sm_addr = L.getSectionLoadAddress(sec);
+			StackMapParser smparser(sm_addr);
+			std::cerr << "Number of records: " << smparser.getNumRecords() << std::endl;
+			smparser.dump_nth_record(0);
+		}	
+	}
+};
+
 ClosureInvoke Compiler::Context::compile()
 {
 	// Construct a couple of pass managers to run the optimisations.
@@ -137,7 +187,10 @@ ClosureInvoke Compiler::Context::compile()
 		llvm::errs() << " --- Optimized IR --- " << '\n';
 		M->dump();
 	}
-	
+
+
+	// create intercepting memory manager
+//	std::unique_ptr<RTDyldMemoryManager> mm_ptr(new JITMemoryManager()); 	
 
 	std::string FunctionName = F->getName();
 	std::string err;
@@ -147,7 +200,11 @@ ClosureInvoke Compiler::Context::compile()
 	// Construct an execution engine (JIT)
 	ExecutionEngine *EE = EB.setEngineKind(EngineKind::JIT)
 		.setErrorStr(&err)
-		.create(tm);
+//		.setMCJITMemoryManager(std::move(mm_ptr))
+		//.create(tm);
+		.create();
+
+	EE->RegisterJITEventListener(new StackmapJITEventListener());
 	if (!EE)
 	{
 		fprintf(stderr, "Failed to construct Execution Engine: %s\n",

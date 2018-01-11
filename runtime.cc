@@ -18,9 +18,8 @@ namespace Interpreter {
 namespace
 {
 
-	uint64_t stackmap_id = 0;
-
-
+	uint64_t stackmap_id = 100;
+	
 /**
  * Global vector of selector names.  This is used to map from a selector to a
  * string value.
