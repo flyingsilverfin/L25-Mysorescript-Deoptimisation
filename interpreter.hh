@@ -10,7 +10,7 @@ namespace Interpreter
 
 
 	// pass through function
-	void reconstructInterpreterContext(void *sp, void *bp);
+	void reconstructInterpreterPassthrough(void *sp, void *bp);
 
 
 	/**

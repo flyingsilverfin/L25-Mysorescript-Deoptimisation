@@ -73,6 +73,8 @@ void usage(const char *cmd)
 
 int main(int argc, char **argv)
 {
+
+
 	clock_t c1;
 	// Are we in read-evaluate-print-loop mode?
 	bool repl = false;

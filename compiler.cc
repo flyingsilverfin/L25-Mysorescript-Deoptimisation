@@ -7,6 +7,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/IR/Intrinsics.h>
+#include <llvm/Target/TargetMachine.h>
 
 using namespace llvm;
 using llvm::legacy::PassManager;
@@ -137,21 +138,24 @@ ClosureInvoke Compiler::Context::compile()
 		M->dump();
 	}
 	
-		M->dump();
 
 	std::string FunctionName = F->getName();
 	std::string err;
 	EngineBuilder EB(std::move(M));
+	TargetMachine * tm = EB.selectTarget();
+	tm->Options.PrintMachineCode = true;	// print x86
 	// Construct an execution engine (JIT)
 	ExecutionEngine *EE = EB.setEngineKind(EngineKind::JIT)
 		.setErrorStr(&err)
-		.create();
+		.create(tm);
 	if (!EE)
 	{
 		fprintf(stderr, "Failed to construct Execution Engine: %s\n",
 				err.c_str());
 		return nullptr;
 	}
+
+
 	// Use the execution engine to compile the code.  Note that we leave the
 	// ExecutionEngine live here because it owns the memory for the function.
 	// It would be better to provide our own JIT memory manager to manage the
@@ -642,14 +646,16 @@ Value *Call::compileExpression(Compiler::Context &c)
 	stackmap_args.push_back(id);
 
 	// reverved bytes - not doing code patching so 0 bytes
-	Value *reserved_bytes = ConstantInt::get(Type::getInt32Ty(c.C), 0);
+	// apparently need to reserve some space for the call instruction
+	// 15 is least that works
+	
+	Value *reserved_bytes = ConstantInt::get(Type::getInt32Ty(c.C), 15);
 	Type *bytes_type = reserved_bytes->getType();
 	arg_types.push_back(bytes_type);
 	stackmap_args.push_back(reserved_bytes);
-
+/*
 	// pointer to `symbols` in the compiler context, needed to reconstruct interpreter
 	Value *symbols_ptr = staticAddress(c, &c.symbols, c.ObjPtrTy, "Context Symbols Pointer");
-//	LLVMTypeRef symbols_ptr_ty = llvm::wrap(symbols_ptr->getType())
 	Type *symbols_ptr_ty = symbols_ptr->getType();
 	arg_types.push_back(symbols_ptr_ty);
 	stackmap_args.push_back(symbols_ptr);
@@ -659,8 +665,34 @@ Value *Call::compileExpression(Compiler::Context &c)
 	ArrayRef<Type*> args_aref(arg_types.data(), arg_types.size());
 
 	// don't actually need to pass types to intrisic declaration!
+	// https://stackoverflow.com/questions/27569967/adding-intrinsics-using-an-llvm-pass
 	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_stackmap);//, args_aref);
-	c.B.CreateCall(fun, stackmap_args, "invoke stackmap");
+	c.B.CreateCall(fun, stackmap_args);
+*/
+
+	
+	// ---patchpoint not stackmap---
+	// function to call
+	Constant *func = c.M->getOrInsertFunction("testCall", Type::getVoidTy(c.C), Type::getInt32Ty(c.C));
+	//llvm::errs() << "func type: ";
+	//func->getType()->dump();
+	//llvm::errs() << "\n";
+	Value *func_i8ptr = c.B.CreateBitCast(func, Type::getInt8PtrTy(c.C));
+	stackmap_args.push_back(func_i8ptr); // needs an i8*... not sure what getOrInsert returns
+
+	// need to insert the number of arguments to the function
+	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), 1)); 
+
+	// arguments to the function
+	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C),100));
+	
+
+	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_patchpoint_void);
+	//llvm::errs() << "Intrinsic required type: ";
+	//fun->getFunctionType()->dump();
+	//llvm::errs() << "\n";
+	
+	c.B.CreateCall(fun, stackmap_args);	
 
 
 	// now need to call with anyregcc to a custom assembly function which
@@ -670,12 +702,30 @@ Value *Call::compileExpression(Compiler::Context &c)
 	// 4. pops JIT stack frame except the return address
 	// 5. calls (?jump?) to ResumeInterpret
 
-	// args type
-//	ArrayRef<Type*> asm_arg_types(llvm::NoneType); // no args for testing
-//	Function* asm_call = c.M->getFunction
-//	CallInst *asm_call = 
+	//args type
+/*	ArrayRef<Type*> asm_arg_types(Type::getInt32Ty(c.C)); 
+	ArrayRef<Value*> anyreg_args(ConstantInt::get(Type::getInt32Ty(c.C),100));
 
-	
+	Value *func = c.M->getOrInsertFunction("testCall", Type::getVoidTy(c.C), Type::getInt32Ty(c.C));
+	CallInst *func_call = CallInst::Create(func, anyreg_args);
+	//func_call->setCallingConv(CallingConv::AnyReg);
+	c.B.Insert(func_call);
+
+//	Constant *testFn = c.M->getOrInsertFunction("testCall", Type::getVoidTy(c.C), Type::getInt32Ty(c.C));
+//	c.B.CreateCall(testFn, {ConstantInt::get(Type::getInt32Ty(c.C),100)});
+*/	
+	/*	ArrayRef<Type*> asm_arg_types(Type::getInt32Ty(c.C)); 
+	ArrayRef<Value*> anyreg_args(ConstantInt::get(Type::getInt32Ty(c.C),100));
+
+
+	Value* func = c.M->getOrInsertFunction("test_call", Type::getVoidTy(c.C), asm_arg_types.data()); 
+	Value *func = c.M->getOrInsertFunction("testCall", Type::getVoidTy(c.C), Type::getInt32Ty(c.C));
+	CallInst *func_call = CallInst::Create(func, anyreg_args);
+	//func_call->setCallingConv(CallingConv::AnyReg);
+	c.B.Insert(func_call);
+*/
+
+
 	// --- arguments for the anyregcc call ---
 	// AST Node to resume at
 ///	arg_type.push_back(llvm::wrap(dynamic_cast<c.ObjPtrTy>(this))); // pointer to this AST node, should be doable with a static cast

@@ -21,7 +21,7 @@ inline bool needsGC(Obj o)
 
 Interpreter::Context *currentContext;
 
-void reconstructInterpreter(void *sp, void *bp) {
+void reconstructInterpreterContext(void *sp, void *bp) {
 	std::cerr << "In reconstructInterpreter\n";
 }
 
@@ -284,8 +284,8 @@ namespace Interpreter
 {
 
 
-	void reconstructInterpreterContext(void *sp, void *bp) {
-		reconstructInterpreter(sp, bp);
+	void reconstructInterpreterPassthrough(void *sp, void *bp) {
+		reconstructInterpreterContext(sp, bp);
 	}
 
 

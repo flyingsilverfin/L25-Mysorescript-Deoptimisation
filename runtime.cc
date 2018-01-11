@@ -11,7 +11,7 @@ using namespace MysoreScript;
 
 // forward declare
 namespace Interpreter {
-	void reconstructInterpreterContext(void *, void*);
+	void reconstructInterpreterPassthrough(void *, void*);
 }
 
 
@@ -741,9 +741,13 @@ Obj callCompiledClosure(ClosureInvoke m, Closure *receiver, Obj *args,
 extern "C"
 {
 
-	void reconstructInterpreter(void *sp, void *bp) {
-		Interpreter::reconstructInterpreterContext(sp, bp);
-	}
+void testCall(uint32_t val) {
+	std::cerr << "Got value: " << val << std::endl;
+}
+
+void reconstructInterpreter(void *sp, void *bp) {
+	Interpreter::reconstructInterpreterPassthrough(sp, bp);
+}
 
 
 Obj mysoreScriptAdd(Obj lhs, Obj rhs)

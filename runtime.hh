@@ -259,6 +259,12 @@ struct Class* lookupClass(const std::string &name);
 
 extern "C"
 {
+
+void testCall(uint32_t val);
+
+void reconstructInterpreter(void *sp, void *bs);
+
+
 /**
  * Instantiate an object.  This returns a new instance of the class with all of
  * its instance variables set to null.
