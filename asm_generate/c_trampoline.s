@@ -41,9 +41,41 @@ trampoline:                             # @trampoline
 	movq	%rsp, %rbp
 .Lcfi5:
 	.cfi_def_cfa_register %rbp
-	movabsq	$_ZSt4cout, %rdi
+	subq	$32, %rsp
+	movabsq	$_ZSt4cerr, %rax
 	movabsq	$.L.str, %rsi
+	movl	%edi, -28(%rbp)
+	#APP
+	movq	%rsp, %rcx
+	#NO_APP
+	movq	%rcx, -16(%rbp)
+	#APP
+	movq	%rbp, %rcx
+	#NO_APP
+	movq	%rcx, -8(%rbp)
+	movq	%rax, %rdi
 	callq	_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc
+	movq	-16(%rbp), %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPKv
+	movabsq	$_ZSt4endlIcSt11char_traitsIcEERSt13basic_ostreamIT_T0_ES6_, %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPFRSoS_E
+	movabsq	$_ZSt4cerr, %rdi
+	movabsq	$.L.str.1, %rsi
+	callq	_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc
+	movq	-8(%rbp), %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPKv
+	movabsq	$_ZSt4endlIcSt11char_traitsIcEERSt13basic_ostreamIT_T0_ES6_, %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPFRSoS_E
+	movabsq	$_ZSt4cerr, %rdi
+	movabsq	$.L.str.2, %rsi
+	callq	_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc
+	movq	-24(%rbp), %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPKv
 	movabsq	$_ZSt4endlIcSt11char_traitsIcEERSt13basic_ostreamIT_T0_ES6_, %rsi
 	movq	%rax, %rdi
 	callq	_ZNSolsEPFRSoS_E
@@ -52,9 +84,6 @@ savingregs:
 	#NO_APP
 	#APP
 	pushq	%rax
-	#NO_APP
-	#APP
-	pushq	%rcx
 	#NO_APP
 	#APP
 	pushq	%rcx
@@ -70,6 +99,9 @@ savingregs:
 	#NO_APP
 	#APP
 	pushq	%rbp
+	#NO_APP
+	#APP
+	pushq	%rsi
 	#NO_APP
 	#APP
 	pushq	%rsi
@@ -98,16 +130,56 @@ savingregs:
 	#APP
 	pushq	%r15
 	#NO_APP
+	movabsq	$_ZSt4cerr, %rdi
+	movabsq	$.L.str, %rsi
+	#APP
+	movq	%rsp, %rax
+	#NO_APP
+	movq	%rax, -16(%rbp)
+	#APP
+	movq	%rbp, %rax
+	#NO_APP
+	movq	%rax, -8(%rbp)
+	#APP
+	movq	-40(%rbp), %rax
+	#NO_APP
+	movq	%rax, -24(%rbp)
+	callq	_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc
+	movq	-16(%rbp), %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPKv
+	movabsq	$_ZSt4endlIcSt11char_traitsIcEERSt13basic_ostreamIT_T0_ES6_, %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPFRSoS_E
+	movabsq	$_ZSt4cerr, %rdi
+	movabsq	$.L.str.1, %rsi
+	callq	_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc
+	movq	-8(%rbp), %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPKv
+	movabsq	$_ZSt4endlIcSt11char_traitsIcEERSt13basic_ostreamIT_T0_ES6_, %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPFRSoS_E
+	movabsq	$_ZSt4cerr, %rdi
+	movabsq	$.L.str.3, %rsi
+	callq	_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc
+	movq	-24(%rbp), %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPKv
+	movabsq	$_ZSt4endlIcSt11char_traitsIcEERSt13basic_ostreamIT_T0_ES6_, %rsi
+	movq	%rax, %rdi
+	callq	_ZNSolsEPFRSoS_E
+	addq	$32, %rsp
 	popq	%rbp
 	retq
 .Lfunc_end1:
 	.size	trampoline, .Lfunc_end1-trampoline
 	.cfi_endproc
                                         # -- End function
-	.section	.text.startup,"ax",@progbits
-	.p2align	4, 0x90         # -- Begin function _GLOBAL__sub_I_c_trampoline.cpp
-	.type	_GLOBAL__sub_I_c_trampoline.cpp,@function
-_GLOBAL__sub_I_c_trampoline.cpp:        # @_GLOBAL__sub_I_c_trampoline.cpp
+	.globl	main                    # -- Begin function main
+	.p2align	4, 0x90
+	.type	main,@function
+main:                                   # @main
 	.cfi_startproc
 # BB#0:                                 # %entry
 	pushq	%rbp
@@ -118,11 +190,34 @@ _GLOBAL__sub_I_c_trampoline.cpp:        # @_GLOBAL__sub_I_c_trampoline.cpp
 	movq	%rsp, %rbp
 .Lcfi8:
 	.cfi_def_cfa_register %rbp
-	callq	__cxx_global_var_init
+	movl	$100, %edi
+	callq	trampoline
+	xorl	%eax, %eax
 	popq	%rbp
 	retq
 .Lfunc_end2:
-	.size	_GLOBAL__sub_I_c_trampoline.cpp, .Lfunc_end2-_GLOBAL__sub_I_c_trampoline.cpp
+	.size	main, .Lfunc_end2-main
+	.cfi_endproc
+                                        # -- End function
+	.section	.text.startup,"ax",@progbits
+	.p2align	4, 0x90         # -- Begin function _GLOBAL__sub_I_c_trampoline.cpp
+	.type	_GLOBAL__sub_I_c_trampoline.cpp,@function
+_GLOBAL__sub_I_c_trampoline.cpp:        # @_GLOBAL__sub_I_c_trampoline.cpp
+	.cfi_startproc
+# BB#0:                                 # %entry
+	pushq	%rbp
+.Lcfi9:
+	.cfi_def_cfa_offset 16
+.Lcfi10:
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+.Lcfi11:
+	.cfi_def_cfa_register %rbp
+	callq	__cxx_global_var_init
+	popq	%rbp
+	retq
+.Lfunc_end3:
+	.size	_GLOBAL__sub_I_c_trampoline.cpp, .Lfunc_end3-_GLOBAL__sub_I_c_trampoline.cpp
 	.cfi_endproc
                                         # -- End function
 	.type	_ZStL8__ioinit,@object  # @_ZStL8__ioinit
@@ -132,8 +227,23 @@ _GLOBAL__sub_I_c_trampoline.cpp:        # @_GLOBAL__sub_I_c_trampoline.cpp
 	.type	.L.str,@object          # @.str
 	.section	.rodata.str1.1,"aMS",@progbits,1
 .L.str:
-	.asciz	"In Trampoline!"
-	.size	.L.str, 15
+	.asciz	"sp: "
+	.size	.L.str, 5
+
+	.type	.L.str.1,@object        # @.str.1
+.L.str.1:
+	.asciz	"bp, from register: "
+	.size	.L.str.1, 20
+
+	.type	.L.str.2,@object        # @.str.2
+.L.str.2:
+	.asciz	"128(%%rbp): "
+	.size	.L.str.2, 13
+
+	.type	.L.str.3,@object        # @.str.3
+.L.str.3:
+	.asciz	"-40(%%rbp): "
+	.size	.L.str.3, 13
 
 	.section	.init_array,"aw",@init_array
 	.p2align	3

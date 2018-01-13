@@ -4,6 +4,9 @@
 #include <assert.h>
 #include <string>
 #include "gc.h"
+#include "StackMapParser.hh"
+#include <unordered_map>
+
 
 static_assert(sizeof(void*) == 8,
 	"MysoreScript only supports 64-bit platforms currently");
@@ -31,7 +34,13 @@ namespace AST
 namespace MysoreScript
 {
 
-uint64_t get_next_stackmap_id(); 
+extern AST::ClosureDecl* cur_jit_function;
+
+uint64_t get_next_stackmap_id();
+StackMapParser *getStackMap();
+//StackMapParser *getStackMap(intptr_t ptr); // only ever need to get currently executing function's
+void registerStackMap(AST::ClosureDecl* func, StackMapParser* smp);
+
 
 struct Object;
 struct Closure;
@@ -260,7 +269,7 @@ struct Class* lookupClass(const std::string &name);
 extern "C"
 {
 
-void testCall(uint32_t val);
+void x86_trampoline(uint64_t arg);
 
 void reconstructInterpreter(void *sp, void *bs);
 

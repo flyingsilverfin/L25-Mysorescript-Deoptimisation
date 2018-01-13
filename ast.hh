@@ -478,6 +478,17 @@ namespace AST
 		clock_t time_spent_in_compiled_method;
 
 		/**
+		 * The bound variables - variables that are declared outside of this
+		 * closure, but referenced inside it.
+		 */
+		std::unordered_set<std::string> boundVars;
+		/**
+		 * Local variables declared inside this closure.
+		 */
+		std::unordered_set<std::string> decls;
+
+
+		/**
 		 * The name of this closure.
 		 */
 		ASTChild<Identifier> name;
@@ -550,15 +561,6 @@ namespace AST
 		 * inside this closure.
 		 */
 		void check();
-		/**
-		 * The bound variables - variables that are declared outside of this
-		 * closure, but referenced inside it.
-		 */
-		std::unordered_set<std::string> boundVars;
-		/**
-		 * Local variables declared inside this closure.
-		 */
-		std::unordered_set<std::string> decls;
 		/**
 		 * Compile as if this is a method.
 		 */

@@ -1,6 +1,7 @@
 #include <string.h>
 #include <iostream>
 #include "parser.hh"
+#include "SMRecordParser.cpp"
 
 using namespace AST;
 using namespace MysoreScript;
@@ -21,8 +22,85 @@ inline bool needsGC(Obj o)
 
 Interpreter::Context *currentContext;
 
-void reconstructInterpreterContext(void *sp, void *bp) {
-	std::cerr << "In reconstructInterpreter\n";
+
+// SP points to bottom of assembly trampoline's stack frame
+// IE the last register saved, r15
+// bp points at the previous bp. The address "above it" is the return address for the trampoline
+// we need this to look up the return address which 
+// return address at 8(%bp) == stackmap_record_offset + stackmap_function_address
+void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *regs_end) {
+
+
+	std::cerr << "return value 8(bp) or *(ptr+1): " << *(bp+1) << std::endl;
+
+	// retrieve the current stackmap
+	StackMapParser *smp = MysoreScript::getStackMap();
+	std::cerr << "Retrieved current stackmap to start reconstructing interpreter context" << std::endl;
+	std::cerr << "It has: " << smp->getNumRecords() << " records in it" << std::endl;
+
+	// one stackmap per function and vice versa
+	assert(smp->getNumFunctions() == 1);
+
+	// if we only have 1 record, then we don't need do any function pointer arithmetic to figure
+	// out which one we need to use for this function
+	
+	auto num_records = smp->getNumRecords();
+	int8_t *record_pointer = nullptr; 
+	if (num_records == 1) {
+		record_pointer = smp->getNthRecord(0);
+	} else {
+		// TODO
+		// rough idea: extract the 'offset' value in each record
+		// and add each in turn to the 'function' address
+		// this needs to equal the return address found at *(bp+1) 
+		//   off by one??
+		std::cerr << "More than 1 record in this stackmap! UNIMPLIMENTED." << std::endl;
+		return;
+	}
+
+	// now we need to iterate through the decls, then bound vars and retrieve these in order
+	ClosureDecl *ast_root = MysoreScript::cur_jit_function;
+	
+	SMRecordParser record_parser(record_pointer, regs_start, regs_end);
+	
+	Interpreter::SymbolTable reconstructed_values;	
+	
+	// test value, 199
+	std::cerr << "Retrieved test value from stackmap (=199): \n  " << record_parser.next_value() << std::endl;
+
+	// AST pointer to resume at
+	pegmatite::ASTNode* resume_node = (pegmatite::ASTNode*)record_parser.next_value();
+	std::cerr << "AST node to resume at: " << (void*)resume_node << std::endl;
+
+	// decls
+	// rely on deterministic hashing... is there a better way of doing this?
+	// perhaps don't use an unordered map?
+	// should be ok though since it's all within 1 execution and no elements being added after parse
+	for (auto &local : cur_jit_function->decls) {
+		//reconstructed_values[local] =
+		std::cerr << "Retrieved local from stackmap: " << local;
+		std::cerr << " = " << record_parser.next_value() << std::endl; 
+	}
+
+	// bound vars
+	if (!cur_jit_function->boundVars.empty()) {
+		for (auto &bound : cur_jit_function->boundVars) {
+		std::cerr << " Retrieved bound var from stackmap: " << bound;
+			std::cerr << " = "	<< record_parser.next_value() << std::endl;	
+		}
+	}
+	
+	
+	// boundVars
+	
+	// goal: iterate through the decls
+	// and then the bound vars
+	// in the same order and retrieve them from the stack map
+	
+		
+
+
+
 }
 
 //Obj resumeInInterpreter(Statement* ast_node, Statement* ClosureDecl) {
@@ -284,8 +362,8 @@ namespace Interpreter
 {
 
 
-	void reconstructInterpreterPassthrough(void *sp, void *bp) {
-		reconstructInterpreterContext(sp, bp);
+	void reconstructInterpreterPassthrough(uint64_t* bp, uint64_t *sps, uint64_t *sp) {
+		reconstructInterpreterContext(bp, sps, sp);
 	}
 
 

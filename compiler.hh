@@ -24,11 +24,13 @@ namespace Compiler
 	 */
 	class Context
 	{
+
 		/**
 		 * The global symbols that can be referenced when compiling.
 		 */
 		Interpreter::SymbolTable                     &globalSymbols;
 		public:
+
 		/**
 		 * The LLVM context.  The current implementation uses the global
 		 * context, but it would be possible to extend MysoreScript to compile
@@ -84,7 +86,8 @@ namespace Compiler
 		 * Construct a context, given a global symbol table from the
 		 * interpreter.  Compilation is always triggered from the interpreter.
 		 */
-		Context(Interpreter::SymbolTable &g);
+		Context(Interpreter::SymbolTable &g);//, AST::ClosureDecl* currentlyCompiling);
+
 		/**
 		 * At the end of compilation, generate code and return a function pointer.
 		 */

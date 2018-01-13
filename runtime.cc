@@ -3,15 +3,17 @@
 #include <unistd.h>
 #include <string.h>
 #include <iostream>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 #include <gc.h>
+
 
 using namespace MysoreScript;
 
 // forward declare
 namespace Interpreter {
-	void reconstructInterpreterPassthrough(void *, void*);
+	void reconstructInterpreterPassthrough(uint64_t*, uint64_t*, uint64_t*);
 }
 
 
@@ -19,7 +21,9 @@ namespace
 {
 
 	uint64_t stackmap_id = 100;
-	
+
+	std::unordered_map<AST::ClosureDecl*, StackMapParser*> stackmaps;
+
 /**
  * Global vector of selector names.  This is used to map from a selector to a
  * string value.
@@ -498,9 +502,26 @@ namespace MysoreScript
 {
 
 
+// define variable (extern declaration in runtime.hh)
+AST::ClosureDecl *cur_jit_function = nullptr;
+
 uint64_t get_next_stackmap_id() {
 	return stackmap_id++;
 }
+
+//StackMapParser *getStackMap(intptr_t ptr) {
+StackMapParser *getStackMap() {
+	if (stackmaps.find(cur_jit_function) != stackmaps.end()) {
+		return stackmaps[cur_jit_function];
+	}
+	std::cerr << "Failed to find current stackmap (ClosureDecl* = " << (void*) cur_jit_function << ")" << std::endl;
+	return nullptr;
+}
+
+void registerStackMap(AST::ClosureDecl* func, StackMapParser *smp) {
+	stackmaps[func] = smp;
+}
+
 
 	
 /**
@@ -740,8 +761,125 @@ Obj callCompiledClosure(ClosureInvoke m, Closure *receiver, Obj *args,
 extern "C"
 {
 
-void testCall(uint32_t val) {
-	std::cerr << "Got value: " << val << std::endl;
+// call with AnyReg cc
+void x86_trampoline(uint64_t arg) {
+/*	std::cerr << "---In Trampoline---" << std::endl;
+	uint64_t *sp;
+	uint64_t *bp;
+	uint64_t *bp2;
+	asm ("movq %%rsp, %0" : "=r" (sp) );	// no clue why these aren't working
+	asm ("movq %%rbp, %0" : "=r" (bp) );
+	asm ("movq (%%rbp), %0" : "=r" (bp2));
+	std::cerr << "sp: " << (void*) sp << std::endl;
+	std::cerr << "bp, from register: " << (void*)bp << std::endl;
+	std::cerr << "128(%%rbp): " << (void*)bp2 << std::endl;
+*/
+
+
+    asm("saveregs:");
+	asm("pushq %rax;");
+	asm("pushq %rdx;");
+	asm("pushq %rcx;");
+	asm("pushq %rbx;");
+	asm("pushq %rsi;");
+	asm("pushq %rdi;");
+	asm("pushq %rbp;");
+	asm("pushq %rsp;");
+	asm("pushq %r8;");
+	asm("pushq %r9;");
+	asm("pushq %r10;");
+	asm("pushq %r11;");
+	asm("pushq %r12;");
+	asm("pushq %r13;");                                       
+    asm("pushq %r14;");                                             
+    asm("pushq %r15;"); 	
+
+//	asm ("movq 128(%%rsp), %0" : "=r" (bp2));
+	register uint64_t *r15 asm("r15");
+	register uint64_t *r14 asm("r14");
+	register uint64_t *r11 asm("r11");
+
+
+	asm ("movq %%rsp, %0" : "=r" (r15) );
+	asm ("movq %rsp, %r13");
+	asm ("addq $120, %r13");
+	asm ("movq %%r13, %0" : "=r" (r14) ); // pointer to start of pushed values
+	asm ("movq %%rbp, %0" : "=r" (r11) ); // base pointer!
+
+/*	std::cerr << "SP:  " << (void*) r15 << std::endl;
+	std::cerr << "SP+120: " << (void*) r14 << std::endl;
+	std::cerr << "*(SP+120): " << *(uint64_t*)r14 << std::endl;
+	std::cerr << "*(SP+120) in assembly: " << (uint64_t*)r9 << std::endl;
+
+//	std::cerr << "RAX: " << (void*)rax << std::endl;
+	std::cerr << "Arg: " << arg << std::endl;
+	std::cerr << "Arg memroy location: " << (void*)&arg << std::endl;
+	std::cerr << "RAX direct as memory location " << (void*)r11 << std::endl;
+	std::cerr << "RAX as Value: " << (uint64_t)r11 << std::endl;
+*/
+
+	Interpreter::reconstructInterpreterPassthrough(r11, r14, r15);
+//	uint64_t *sp_end = sp;
+
+	// may need return address, which is 8(bsp)?
+/*	register uint64_t *bp asm("rbp");
+
+	uint64_t *sp_ptr;
+	uint64_t *bp_ptr;
+	uint64_t val;
+	asm ("movq %%rsp, %0" : "=r" (sp_ptr) );	// no clue why these aren't working
+	asm ("movq %%rbp, %0" : "=r" (bp_ptr) );
+	
+	std::cerr << "SP from movq: " << (void*) sp_ptr << std::endl;
+	std::cerr << "SP from register: " << (void*) sp << std::endl;
+*/
+	
+
+
+/*
+	std::cerr << "bp, from register: " << (void*)bp << std::endl;
+//	std::cerr << "128(%%rbp): " << (void*)bp2 << std::endl;
+//	asm("movq -40(%%rbp), %0" : "=r" (sp));
+//	asm("movq -48(%%rbp), %0" : "=r" (bp));
+
+	uint64_t rax;
+	asm("movq %%rax, %0" : "=r" (rax));
+	std::cerr << "Rax: " << rax << std::endl;
+	register uint64_t rax_ asm("rax");
+	std::cerr << "Rax from `register`: " << rax_ << std::endl;
+	uint64_t rax__; 
+	asm("movq 8(%%rbp), %0" : "=r" (rax__));
+	std::cerr << "8(%rbp): " << rax__ << std::endl;
+// c convention: arg == rax 
+*/
+	
+
+
+/*	auto faddr = &(Interpreter::reconstructInterpreterPassthrough);
+	std::string addr_string;
+	std::ostringstream ost;
+	ost << faddr;
+    addr_string = ost.str();
+	const std::string call = "call " + addr_string;
+*/	
+	// pop all the register args off
+    asm("popq %r15");                                             
+    asm("popq %r14");	
+    asm("popq %r13");                                             
+    asm("popq %r12");                                             
+    asm("popq %r11");                                             
+    asm("popq %r10");                                             
+    asm("popq %r9"); 	
+    asm("popq %r8");
+	asm("popq %rsp");
+    asm("popq %rbp"); 	
+    asm("popq %rdi");                                             
+    asm("popq %rsi");                                             
+    asm("popq %rbx");
+	asm("popq %rcx");	
+	asm("popq %rdx");
+    asm("popq %rax"); 	
+
 }
 
 // TODO
@@ -756,11 +894,9 @@ void testCall(uint32_t val) {
 // deal with live variables later
 
 
-//void trampoline(uint64_t stackmap_id
-
-void reconstructInterpreter(void *sp, void *bp) {
-	Interpreter::reconstructInterpreterPassthrough(sp, bp);
-}
+// SP points to bottom of assembly trampoline's stack frame
+// IE the last register saved, r15
+// bp points at the previous bp. The address "above it" is the return address for the trampoline
 
 
 Obj mysoreScriptAdd(Obj lhs, Obj rhs)

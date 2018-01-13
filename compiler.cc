@@ -134,6 +134,9 @@ Value *Compiler::Context::lookupSymbolAddr(const std::string &str)
 };        
 */
 
+
+AST::ClosureDecl* currentlyCompiling = nullptr;
+
 // THIS WORKS!
 // THANK YOU PYSTON & OPEN SOURCE
 class StackmapJITEventListener : public llvm::JITEventListener {
@@ -149,9 +152,9 @@ void StackmapJITEventListener::NotifyObjectEmitted(const llvm::object::ObjectFil
 		sec.getName(name);
 		if (name == ".llvm_stackmaps") {
 			uint64_t sm_addr = L.getSectionLoadAddress(sec);
-			StackMapParser smparser(sm_addr);
-			std::cerr << "Number of records: " << smparser.getNumRecords() << std::endl;
-			smparser.dump_nth_record(0);
+			StackMapParser *smp = new StackMapParser(sm_addr);
+			// register stackmap with runtime
+			MysoreScript::registerStackMap(currentlyCompiling, smp);
 		}	
 	}
 };
@@ -201,8 +204,8 @@ ClosureInvoke Compiler::Context::compile()
 	ExecutionEngine *EE = EB.setEngineKind(EngineKind::JIT)
 		.setErrorStr(&err)
 //		.setMCJITMemoryManager(std::move(mm_ptr))
-		.create(tm);
-		//.create();
+		//.create(tm);
+		.create();
 
 	EE->RegisterJITEventListener(new StackmapJITEventListener());
 	if (!EE)
@@ -274,11 +277,14 @@ llvm::FunctionType *Compiler::Context::getClosureType(int bound, int args)
 	return invokeTy;
 }
 
+
+
 CompiledMethod ClosureDecl::compileMethod(Class *cls,
                                           Interpreter::SymbolTable &globalSymbols)
 {
 	auto &params = parameters->arguments;
 	Compiler::Context c(globalSymbols);
+	currentlyCompiling = this;
 	// Get the type of the method as an LLVM type
 	FunctionType *ClosureInvokeTy = c.getMethodType(cls->indexedIVarCount,
 			params.size());
@@ -288,6 +294,18 @@ CompiledMethod ClosureDecl::compileMethod(Class *cls,
 	// Insert the first basic block and store all of the parameters.
 	BasicBlock *entry = BasicBlock::Create(c.C, "entry", c.F);
 	c.B.SetInsertPoint(entry);
+
+// record in the runtime which function is currently being executed
+// TODO this might not be the best way to find associated stackmap
+// potential performance loss here!
+// Also need to set it back to the same value when a `Call` returns
+	Value *currently_executing_ptr = staticAddress(c, &MysoreScript::cur_jit_function, c.ObjPtrTy->getPointerTo(), "Runtime ptr cur jit func");
+	Value *this_addr = staticAddress(c, currentlyCompiling, c.ObjPtrTy, "This ClosureDecl");
+	Value *v = c.B.CreateStore(this_addr, currently_executing_ptr);
+//	v->dump();
+
+
+
 	// We'll store the arguments into stack allocations so that they can be
 	// written to.
 	auto AI = c.F->arg_begin();
@@ -380,10 +398,13 @@ CompiledMethod ClosureDecl::compileMethod(Class *cls,
 	return reinterpret_cast<CompiledMethod>(c.compile());
 }
 
+
+// NOTE second entry point to compilation process!
 ClosureInvoke ClosureDecl::compileClosure(Interpreter::SymbolTable &globalSymbols)
 {
 	auto &params = parameters->arguments;
 	Compiler::Context c(globalSymbols);
+	currentlyCompiling = this;
 	// Get the LLVM type of the closure invoke function
 	FunctionType *ClosureInvokeTy = c.getClosureType(boundVars.size(),
 			params.size());
@@ -391,7 +412,20 @@ ClosureInvoke ClosureDecl::compileClosure(Interpreter::SymbolTable &globalSymbol
 	c.F = Function::Create(ClosureInvokeTy, GlobalValue::ExternalLinkage, "invoke", c.M.get());
 	// Insert the first basic block and store all of the parameters.
 	BasicBlock *entry = BasicBlock::Create(c.C, "entry", c.F);
+
+
 	c.B.SetInsertPoint(entry);
+
+// record in the runtime which function is currently being executed
+// TODO this might not be the best way to find associated stackmap
+// potential performance loss here!
+// Also need to set it back to the same value when a `Call` returns
+	Value *currently_executing_ptr = staticAddress(c, &MysoreScript::cur_jit_function, c.ObjPtrTy->getPointerTo(), "Runtime ptr cur jit func");
+	Value *this_addr = staticAddress(c, currentlyCompiling, c.ObjPtrTy, "This ClosureDecl");
+	Value *v = c.B.CreateStore(this_addr, currently_executing_ptr);
+//	v->dump();
+
+
 	auto AI = c.F->arg_begin();
 	auto selfPtr = c.B.CreateAlloca(c.ObjPtrTy);
 	c.symbols["self"] = selfPtr;
@@ -517,6 +551,10 @@ Value *ClosureDecl::compileExpression(Compiler::Context &c)
 	c.B.CreateStore(c.B.CreateBitCast(closure, c.ObjPtrTy), c.symbols[name]);
 	return closure;
 }
+
+
+
+
 Value *Call::compileExpression(Compiler::Context &c)
 {
 	SmallVector<Value*, 10> args;
@@ -557,8 +595,14 @@ Value *Call::compileExpression(Compiler::Context &c)
 		Value *invokeFn = c.B.CreateStructGEP(closureTy, closure, 2);
 		// Load the address of the invoke function
 		invokeFn = c.B.CreateLoad(invokeFn);
-		// Insert the call
-		return c.B.CreateCall(invokeFn, args, "call_closure");
+		// Insert the call	
+		Value *invoke_call = c.B.CreateCall(invokeFn, args, "call_closure");
+	// after the call, need to reset currently_executing ptr
+	Value *currently_executing_ptr = staticAddress(c, &MysoreScript::cur_jit_function, c.ObjPtrTy->getPointerTo(), "Runtime ptr cur jit func");
+	Value *this_addr = staticAddress(c, currentlyCompiling, c.ObjPtrTy, "This ClosureDecl");
+	c.B.CreateStore(this_addr, currently_executing_ptr);
+		// return c.B.CreateCall(invokeFn, args, "call_closure");
+		return invoke_call;
 	}
 
 // create a branch here mirroring interpreter check
@@ -585,7 +629,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 	llvm::errs() << "running inline cache optimisation\n";
 
-	// set up slow and fast path asic blocks
+	// set up slow ang fast path asic blocks
 //	BasicBlock* fast = BasicBlock::Create(c.C, "cached", c.F);
 	BasicBlock* slow = BasicBlock::Create(c.C, "cacheMiss", c.F);
 	BasicBlock *rejoinBB = BasicBlock::Create(c.C, "rejoin", c.F);
@@ -725,75 +769,49 @@ Value *Call::compileExpression(Compiler::Context &c)
 	
 	// ---patchpoint not stackmap---
 	// function to call
-	Constant *func = c.M->getOrInsertFunction("testCall", Type::getVoidTy(c.C), Type::getInt32Ty(c.C));
+	// just pass an uint32_t for now for testing!
+	Constant *func = c.M->getOrInsertFunction("x86_trampoline", Type::getVoidTy(c.C), Type::getInt64Ty(c.C));
 	Value *func_i8ptr = c.B.CreateBitCast(func, Type::getInt8PtrTy(c.C));
 	stackmap_args.push_back(func_i8ptr); // needs an i8*... not sure what getOrInsert returns
 
 	// need to insert the number of arguments to the function
-	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), 1)); 
+	uint32_t num_args = 1; // AST node to resume at
+	num_args += currentlyCompiling->decls.size(); // local vars
+	num_args += currentlyCompiling->boundVars.size(); // bound vars
+	num_args++; // testing
+	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), num_args)); 
 
-	// arguments to the function
-	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C),100));
+	stackmap_args.push_back(ConstantInt::get(Type::getInt64Ty(c.C), 199));
 
+	
+	// --- arguments for the anyregcc call ---
+	// idea: insert, in order:
+	// 1. pointer to AST node to resume at
+	// 2. values of all local decls (using standard iterator)
+	// 3. values of all bound vars (using standard iterator)
+	
+	// AST Node to resume at
+	stackmap_args.push_back(staticAddress(c, this, c.ObjPtrTy));
 
-	// pointer to `symbols` in the compiler context, needed to reconstruct interpreter
-	// this goes in stackmap...
-	Value *symbols_ptr = staticAddress(c, &c.symbols, c.ObjPtrTy, "Context Symbols Pointer");
-	stackmap_args.push_back(symbols_ptr);
+	// decls
+	// rely on deterministic hashing...
+	for (auto &local : currentlyCompiling->decls) {
+		stackmap_args.push_back(staticAddress(c, c.symbols[local], c.ObjPtrTy));
+	}
 
-// 	
+	// bound vars
+	if (!currentlyCompiling->boundVars.empty()) {
+		for (auto &bound : currentlyCompiling->boundVars) {
+			stackmap_args.push_back(staticAddress(c, c.symbols[bound], c.ObjPtrTy));
+		}
+	}
+
 
 	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_patchpoint_void);
 	CallInst *func_call = CallInst::Create(fun, stackmap_args);
 	func_call->setCallingConv(CallingConv::AnyReg);
 	c.B.Insert(func_call);
 
-
-	// now need to call with anyregcc to a custom assembly function which
-	// 1. saves registers in order onto the stack
-	// 2. calls interpreter ReconstructContext
-	// 3. pops registers and return address put on stack by anyregcc call
-	// 4. pops JIT stack frame except the return address
-	// 5. calls (?jump?) to ResumeInterpret
-
-	//args type
-/*	ArrayRef<Type*> asm_arg_types(Type::getInt32Ty(c.C)); 
-	ArrayRef<Value*> anyreg_args(ConstantInt::get(Type::getInt32Ty(c.C),100));
-
-	Value *func = c.M->getOrInsertFunction("testCall", Type::getVoidTy(c.C), Type::getInt32Ty(c.C));
-	CallInst *func_call = CallInst::Create(func, anyreg_args);
-	//func_call->setCallingConv(CallingConv::AnyReg);
-	c.B.Insert(func_call);
-
-//	Constant *testFn = c.M->getOrInsertFunction("testCall", Type::getVoidTy(c.C), Type::getInt32Ty(c.C));
-//	c.B.CreateCall(testFn, {ConstantInt::get(Type::getInt32Ty(c.C),100)});
-*/	
-	/*	ArrayRef<Type*> asm_arg_types(Type::getInt32Ty(c.C)); 
-	ArrayRef<Value*> anyreg_args(ConstantInt::get(Type::getInt32Ty(c.C),100));
-
-
-	Value* func = c.M->getOrInsertFunction("test_call", Type::getVoidTy(c.C), asm_arg_types.data()); 
-	Value *func = c.M->getOrInsertFunction("testCall", Type::getVoidTy(c.C), Type::getInt32Ty(c.C));
-	CallInst *func_call = CallInst::Create(func, anyreg_args);
-	//func_call->setCallingConv(CallingConv::AnyReg);
-	c.B.Insert(func_call);
-*/
-
-
-	// --- arguments for the anyregcc call ---
-	// AST Node to resume at
-///	arg_type.push_back(llvm::wrap(dynamic_cast<c.ObjPtrTy>(this))); // pointer to this AST node, should be doable with a static cast
-//	args.push_back(llvm::wrap(this));
-//
-	// need to figure out the nearest enclosing ClosureDecl
-//	ASTNode* ast_ptr = this;				// should impliclty upcast
-//	while (!ast_ptr->isa<ClosureDecl>()) {
-//		ast_ptr = ast_ptr->parent();	// Pegmatite AST methods
-//	}
-	
-	// Second arugment to target function, the Enclosing Closure that was compiled
-//	arg_type.push_back(dynamic_cast<c.ObjPtrTy>(ast_ptr));
-//	args.push_back(llvm::wrap(ast_ptr));
 
 
 	
@@ -825,11 +843,15 @@ Value *Call::compileExpression(Compiler::Context &c)
 	rejoined->addIncoming(methodFn, slow);
 	rejoined->addIncoming(cachedMeth, notNull);
 
-
-	
-
 	// Call the method
-	return c.B.CreateCall(rejoined, args, "call_method");
+	Value *call_method = c.B.CreateCall(rejoined, args, "call_method");
+	// need to reset the currently executing function ptr in the runtime	
+	Value *currently_executing_ptr = staticAddress(c, &MysoreScript::cur_jit_function, c.ObjPtrTy->getPointerTo(), "Runtime ptr cur jit func");
+	Value *this_addr = staticAddress(c, currentlyCompiling, c.ObjPtrTy, "this ClosureDecl");
+	Value *s = c.B.CreateStore(this_addr, currently_executing_ptr);
+
+//	return c.B.CreateCall(rejoined, args, "call_method");
+	return call_method;
 }
 
 void Statements::compile(Compiler::Context &c)
@@ -1031,37 +1053,6 @@ Value *compileBinaryOp(Compiler::Context &c, Value *LHS, Value *RHS,
 	// Create three basic blocks, one for the small int case, one for the real
 	// object case, and one for when the two join together again.
 	BasicBlock *cont = BasicBlock::Create(c.C, "cont", c.F);
-	BasicBlock *small = BasicBlock::Create(c.C, "int", c.F);
-	BasicBlock *obj = BasicBlock::Create(c.C, "obj", c.F);
-	// If both arguments are small integers, jump to the small int block,
-	// otherwise fall back to the other case.
-	c.B.CreateCondBr(isSmallInt, small, obj);
-
-	// Now emit the small int code:
-	c.B.SetInsertPoint(small);
-	// Shift both values right by 3 to give primitive integer values
-	LHSInt = c.B.CreateAShr(LHSInt, ConstantInt::get(c.ObjIntTy, 3));
-	RHSInt = c.B.CreateAShr(RHSInt, ConstantInt::get(c.ObjIntTy, 3));
-	// Invoke the function passed by the caller to insert the correct operation.
-	Value *intResult  = c.B.CreateBinOp(Op, LHSInt, RHSInt);
-	// Now cast the result to an object and branch to the continue block
-	intResult = getAsObject(c, compileSmallInt(c, intResult));
-	c.B.CreateBr(cont);
-
-	// Next we'll handle the real object case.
-	c.B.SetInsertPoint(obj);
-	// Call the function that handles the object case
-	Value *objResult = c.B.CreateCall(c.M->getOrInsertFunction(slowCallFnName,
-				c.ObjPtrTy, LHS->getType(), RHS->getType()),
-			{LHS, RHS});
-	// And branch to the continuation block
-	c.B.CreateBr(cont);
-
-	// Now that we've handled both cases, we need to unify the flow control and
-	// provide a single value
-	c.B.SetInsertPoint(cont);
-	// Construct a PHI node to hold the result.  
-	PHINode *result = c.B.CreatePHI(intResult->getType(), 2, "sub");
 	// Set its value to the result of whichever basic block we arrived from
 	result->addIncoming(intResult, small);
 	result->addIncoming(objResult, obj);

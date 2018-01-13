@@ -1,4 +1,5 @@
 #include <iostream>
+#include "StackMapParser.hh"
 
 /*
  * Basic Interface to parse StackMap sections
@@ -35,114 +36,99 @@
 
 
 
-class StackMapParser {
-	private:
+StackMapParser::StackMapParser(uint64_t location)
+{
+	base = (int8_t*)location;
 
-	const int8_t* base;
+	//sanity check
+	assert(*base == 3); // version is hardcoded to 3
+	for (uint8_t i = 0; i < 240; i++) {
+		std::cerr << "Byte " << std::to_string(i) << " : " << std::to_string(*(base+i)) << "\tAddress: " << (void*)(base+i) << std::endl;
+	}
+	std::cerr << "Num Functions: " << getNumFunctions();
+	std::cerr << "  Num Constants: " << getNumConstants();
+	std::cerr << "  Num Records: " << getNumRecords() << std::endl;
+	// compute base of records
+	records_base = base + StkSizeRecord + getNumFunctions()*SIZE_StkSizeRecord + getNumConstants()*SIZE_CONSTANTS;
+	
+	std::cerr << " Records base: " << (void*)records_base << std::endl;
+	std::cerr << " Number of entries in first record: " << *(((uint16_t*)records_base) + 7) << std::endl;
 
-	// precomputed locations
-	const int8_t* records_base;	
+//	std::cerr << " 0th record dump: ";// << dump_nth_record(0) << std::endl;
+}
+
+uint32_t StackMapParser::getBytesInRecord(int8_t* record) {
+	uint32_t record_entry_header = LOCS;
+	uint16_t num_locs = *((uint16_t*)(record + LOCS));
+	uint32_t bytes = record_entry_header + num_locs*LOCATION_SIZE; // account for variable number of locs
+	
+	// optional 4 byte padding applies if num_locs is odd
+	if (num_locs % 2 == 1) {
+		bytes += 4;
+	}
+	
+	bytes += 2; // mandatory padding
+	uint16_t num_liveouts = *((uint16_t*)(record + bytes));
+	bytes += num_liveouts*LIVEOUT_ENTRY_SIZE;
+	
+	// optional 4 byte padding applies if num_liveouts is even
+	if (num_liveouts % 2 == 0) {
+		bytes += 4;
+	}
+	return bytes;
+}
+
+uint64_t StackMapParser::getIdOfRecord(int8_t* record) {
+	return *((uint64_t*)(record));
+}
+
+uint32_t StackMapParser::getNumFunctions() {
+	return *((uint32_t*)(base + NUM_FUNCTIONS));
+}
 
 
-	// computes size of record entry in bytes
-	uint32_t getBytesInRecord(const int8_t* record) {
-		uint32_t record_entry_header = LOCS;
-		uint16_t num_locs = *((uint16_t*)(record + LOCS));
-		uint32_t bytes = record_entry_header + num_locs*LOCATION_SIZE; // account for variable number of locs
-		
-		// optional 4 byte padding applies if num_locs is odd
-		if (num_locs % 2 == 1) {
-			bytes += 4;
+uint32_t StackMapParser::getNumConstants() {
+	return *((uint32_t*)(base + NUM_CONSTANTS));
+}
+
+uint32_t StackMapParser::getNumRecords() {
+	return *((uint32_t*)(base + NUM_RECORDS));
+}
+
+
+int8_t *StackMapParser::getNthRecord(uint32_t nth) {
+	auto n = getNumRecords();
+	assert( nth < n);// , "Requesting higher record than there is");
+	int8_t* ptr = records_base;
+	for (uint64_t i = 0; i < nth; i++) {
+		ptr += getBytesInRecord(ptr);
+	}
+	return ptr;
+}
+
+int8_t *StackMapParser::getRecordWithId(uint64_t id) {
+	auto n = getNumRecords();
+	int8_t* ptr = records_base;
+	for (uint64_t i = 0; i < n; i++) {
+		auto record_id = getIdOfRecord(ptr);
+		if (record_id == id) {
+			return ptr;
 		}
-		
-		bytes += 2; // mandatory padding
-		uint16_t num_liveouts = *((uint16_t*)(record + bytes));
-		bytes += num_liveouts*LIVEOUT_ENTRY_SIZE;
-		
-		// optional 4 byte padding applies if num_liveouts is even
-		if (num_liveouts % 2 == 0) {
-			bytes += 4;
-		}
-		return bytes;
+		ptr += getBytesInRecord(ptr);
 	}
-
-	uint64_t getIdOfRecord(const int8_t* record) {
-		return *((uint64_t*)(record));
-	}
-
-	public:
-
-	StackMapParser(uint64_t location)
-	{
-		base = (const int8_t*)location;
-
-		//sanity check
-		assert(*base == 3); // version is hardcoded to 3
-		for (int8_t i = 0; i < 80; i++) {
-			std::cerr << "Byte " << std::to_string(i) << " : " << std::to_string(*(base+i)) << "Address: " << (void*)(base+i) << std::endl;
-		}
-		std::cerr << "Num Functions: " << getNumFunctions();
-		std::cerr << "  Num Constants: " << getNumConstants();
-		std::cerr << "  Num Records: " << getNumRecords() << std::endl;
-		// compute base of records
-		records_base = base + StkSizeRecord + getNumFunctions()*SIZE_StkSizeRecord + getNumConstants()*SIZE_CONSTANTS;
-		
-		std::cerr << "Records base: " << (void*)records_base << std::endl;
-
-		std::cerr << "0th record dump: ";// << dump_nth_record(0) << std::endl;
-	} 
+	assert( 0 ); // "NOT able to find record matching ID given " + std::to_string(id));
+}
 
 
-	uint32_t getNumFunctions() {
-		return *((uint32_t*)(base + NUM_FUNCTIONS));
-	}
-
-	uint32_t getNumConstants() {
-		return *((uint32_t*)(base + NUM_CONSTANTS));
-	}
-
-	uint32_t getNumRecords() {
-		return *((uint32_t*)(base + NUM_RECORDS));
-	}
+void StackMapParser::dump_nth_record(uint64_t nth) {
+	auto ptr = getNthRecord(nth);
+	std::cout << " Pointer for record: " << (void*)ptr << std::endl;
+	std::cout << "Patchpoint ID: " << *(uint64_t*)(ptr) << std::endl;
+	ptr += 8;
+	std::cout << "Instruction Offset: " << *(uint32_t*)(ptr) << std::endl;
+	ptr += 6;
+	std::cout << "NumLocations: " << *(uint16_t*)(ptr) << std::endl;
+}
 
 
 
-	const int8_t *getNthRecord(uint64_t nth) {
-		auto n = getNumRecords();
-		assert( nth < n);// , "Requesting higher record than there is");
-		const int8_t* ptr = records_base;
-		for (uint64_t i = 0; i < nth; i++) {
-			ptr += getBytesInRecord(ptr);
-		}
-		return ptr;
-	}
-
-	const int8_t *getRecordWithId(uint64_t id) {
-		auto n = getNumRecords();
-		const int8_t* ptr = records_base;
-		for (uint64_t i = 0; i < n; i++) {
-			auto record_id = getIdOfRecord(ptr);
-			if (record_id == id) {
-				return ptr;
-			}
-			ptr += getBytesInRecord(ptr);
-		}
-		assert( 0 ); // "NOT able to find record matching ID given " + std::to_string(id));
-	}
-
-
-	void dump_nth_record(uint64_t nth) {
-		auto ptr = getNthRecord(nth);
-		std::cout << " Pointer for record: " << (void*)ptr << std::endl;
-		std::cout << "Patchpoint ID: " << *(uint64_t*)(ptr) << std::endl;
-		ptr += 8;
-		std::cout << "Instruction Offset: " << *(uint32_t*)(ptr) << std::endl;
-		ptr += 6;
-		std::cout << "NumLocations: " << *(uint16_t*)(ptr) << std::endl;
-	}
-
-
-
-
-
-};
