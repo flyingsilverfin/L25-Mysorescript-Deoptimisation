@@ -143,13 +143,15 @@ class A
 
 /* if allowed, this will get JIT'ed so it's called many times, and therefore implementing inline caching */
 func getter(a) {
-	return a.get_val();
+	var b = 10;
+	var c = a.get_val();
+	return b+c;
 };
 
 var aclass = new A.init();
 var i = 0;
 var s = 0;
-while ( i < 1000000 ) {
+while ( i < 100 ) {
 	s = s + getter(aclass);
 	/*s.dump();*/
 	i = i + 1;

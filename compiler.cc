@@ -179,6 +179,8 @@ ClosureInvoke Compiler::Context::compile()
 		llvm::errs() << "--- Pre-optimisation IR --- " << '\n';
 		M->dump();
 	}
+
+
 	// Run the passes to optimise the function / module.
 	MPM.run(*M);
 	FPM.run(*F);
@@ -190,7 +192,6 @@ ClosureInvoke Compiler::Context::compile()
 		llvm::errs() << " --- Optimized IR --- " << '\n';
 		M->dump();
 	}
-
 
 	// create intercepting memory manager
 //	std::unique_ptr<RTDyldMemoryManager> mm_ptr(new JITMemoryManager()); 	
@@ -779,6 +780,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 	num_args += currentlyCompiling->decls.size(); // local vars
 	num_args += currentlyCompiling->boundVars.size(); // bound vars
 	num_args++; // testing
+	std::cerr << "Number of locals + bound vars: " << num_args - 2 << std::endl;
 	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), num_args)); 
 
 	stackmap_args.push_back(ConstantInt::get(Type::getInt64Ty(c.C), 199));

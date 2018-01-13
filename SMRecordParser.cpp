@@ -118,7 +118,7 @@ class SMRecordParser {
 				auto offset = dwarf_reg_offset[regnum];
 				// grab the register value which was saved to the stack!
 				auto value = *(registers_start - offset);
-				std::cerr << "  Obtained register " << std::to_string(offset) << " (" << dwarf_reg_names[offset] << ")\n";
+				std::cerr << "  Obtained register " << std::to_string(offset) << " (" << dwarf_reg_names[offset] << ")";
 				std::cerr << "  From memory location: " << (void*)(registers_start - offset) << std::endl;
 				return (int64_t)value;
 			} else if (loc.type == 2) {

@@ -78,28 +78,22 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 	// should be ok though since it's all within 1 execution and no elements being added after parse
 	for (auto &local : cur_jit_function->decls) {
 		//reconstructed_values[local] =
-		std::cerr << "Retrieved local from stackmap: " << local;
-		std::cerr << " = " << record_parser.next_value() << std::endl; 
+		auto val = record_parser.next_value();
+		std::cerr << "Retrieved local from stackmap: " << local << " = " << std::to_string(val) << std::endl; 
+		int64_t v = *(int8_t*)val;
+		std::cerr << "Derferenced as 8 bit ptr: " << v << std::endl; 	
 	}
 
 	// bound vars
 	if (!cur_jit_function->boundVars.empty()) {
 		for (auto &bound : cur_jit_function->boundVars) {
-		std::cerr << " Retrieved bound var from stackmap: " << bound;
-			std::cerr << " = "	<< record_parser.next_value() << std::endl;	
+			auto val = record_parser.next_value();
+			std::cerr << " Retrieved bound var from stackmap: " << bound << " = " << std::to_string(val) << std::endl;	
+			std::cerr << "Derferenced as 8 bit ptr: " << *(uint8_t*)val << std::endl; 	
 		}
 	}
 	
 	
-	// boundVars
-	
-	// goal: iterate through the decls
-	// and then the bound vars
-	// in the same order and retrieve them from the stack map
-	
-		
-
-
 
 }
 
