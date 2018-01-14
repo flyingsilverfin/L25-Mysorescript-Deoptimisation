@@ -7,6 +7,8 @@
 #include "StackMapParser.hh"
 #include <unordered_map>
 
+extern "C" void* x86_trampoline();
+
 
 static_assert(sizeof(void*) == 8,
 	"MysoreScript only supports 64-bit platforms currently");
@@ -269,7 +271,7 @@ struct Class* lookupClass(const std::string &name);
 extern "C"
 {
 
-void x86_trampoline(uint64_t arg);
+// void x86_trampoline(uint64_t arg); // now linked in as external library
 
 void reconstructInterpreter(void *sp, void *bs);
 

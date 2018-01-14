@@ -38,7 +38,7 @@ Obj resumeInInterpreter(Statement* ast_node) {
 	std::cerr << "Context.returnValue: " << (void*)(currentContext->retVal) << std::endl;
 	currentContext->isReturning = false;
 	currentContext->popSymbols();
-	return (Obj) (9); // return some integer type
+	return currentContext->retVal; // return some integer type
 }
 
 // SP points to bottom of assembly trampoline's stack frame
@@ -46,7 +46,7 @@ Obj resumeInInterpreter(Statement* ast_node) {
 // bp points at the previous bp. The address "above it" is the return address for the trampoline
 // we need this to look up the return address which 
 // return address at 8(%bp) == stackmap_record_offset + stackmap_function_address
-void *reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *regs_end) {
+Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *regs_end, uint64_t* return_reg) {
 
 
 	std::cerr << "return value 8(bp) or *(ptr+1): " << *(bp+1) << std::endl;
@@ -83,9 +83,9 @@ void *reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t
 	
 	Interpreter::SymbolTable *reconstructed_values = new Interpreter::SymbolTable();	
 	Interpreter::SymbolTable &symtab = *reconstructed_values; // for ease of use...	
-	// test value, 199
-	std::cerr << "Retrieved Return loc from stackmap " << record_parser.next_value() << std::endl;
-//	std::cerr << "Retrieved test value from stackmap (=199): \n  " << record_parser.next_value() << std::endl;
+	
+	*return_reg = record_parser.next_value();
+	std::cerr << "Retrieved Return loc from stackmap " << *return_reg << std::endl;
 
 	// AST pointer to resume at
 	uint64_t resume_node_int = record_parser.next_value();
@@ -392,11 +392,11 @@ CompiledMethod methodTrampolines[] = {
 namespace Interpreter
 {
 
-
-	void *reconstructInterpreterPassthrough(uint64_t* bp, uint64_t *sps, uint64_t *sp) {
-		return reconstructInterpreterContext(bp, sps, sp);
+extern "C" {
+	void *reconstructInterpreterPassthrough(uint64_t* bp, uint64_t *sps, uint64_t *sp, uint64_t *ret_reg) {
+		return reconstructInterpreterContext(bp, sps, sp, ret_reg);
 	}
-
+}
 
 /**
  * Array of trampolines, indexed by number or arguments.  

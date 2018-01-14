@@ -11,13 +11,18 @@ set(mysorescript_CXX_SRCS
 	interpreter.cc
 	main.cc
 	runtime.cc
+	asm_generate/x86_trampoline_final.s
 )
 set(LLVM_LIBS
 	all
 )
 
+# set (asm "asm_generate/x86_trampoline_final.s") 
+
 # Define the mysorescript program that we will build
 add_executable(mysorescript ${mysorescript_CXX_SRCS})
+#add_executable(mysorescript ${asm})
+
 # We're using pegmatite in the RTTI mode
 add_definitions(-DUSE_RTTI=1)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
@@ -29,7 +34,7 @@ else()
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
 
-message(STATUS "TESTING")
+# message(STATUS "TESTING")
 
 # Find the Boehm GC stuff
 include(FindPkgConfig)
@@ -90,6 +95,8 @@ exec_program(${LLVM_CONFIG}
 	OUTPUT_VARIABLE LLVM_BINDIR)
 string(REGEX REPLACE "([0-9]*).([0-9]*).*" "-DLLVM_MAJOR=\\1 -DLLVM_MINOR=\\2"  LLVM_VERSION "${LLVM_VER}")
 
+#target_link_libraries("asm_generate/x86_trampoline.s")
+
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS} ${LLVM_VERSION}")
 target_link_libraries(mysorescript ${LLVM_LIBS_FLAGS})
@@ -101,7 +108,7 @@ if (LLVM_VER VERSION_GREATER 3.4)
 		target_link_libraries(mysorescript ${LLVM_SYSTEMLIBS})
 	endif()
 endif()
-set(CMAKE_EXE_LINKER_FLAGS "${LLVM_LDFLAGS} ${LIBGC} ${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath,${LLVM_LIBDIR}")
+set(CMAKE_EXE_LINKER_FLAGS "${LLVM_LDFLAGS} ${LIBGC} ${CMAKE_EXE_LINKER_FLAGS} -Wl,-no-as-needed,-rpath,${LLVM_LIBDIR}")
 
 # Make sure that we use the LLVM path as an rpath so that we can dynamically
 # link to LLVM.  Don't let CMake specify its own rpath

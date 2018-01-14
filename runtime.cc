@@ -760,23 +760,18 @@ Obj callCompiledClosure(ClosureInvoke m, Closure *receiver, Obj *args,
 
 extern "C"
 {
+	//dummy to force linker
+	void dummy() {
+		x86_trampoline();
+	}
+/*
+static uint64_t return_register = 0;
+static intptr_t return_value;
 
 // call with AnyReg cc
-void x86_trampoline(uint64_t arg) {
-/*	std::cerr << "---In Trampoline---" << std::endl;
-	uint64_t *sp;
-	uint64_t *bp;
-	uint64_t *bp2;
-	asm ("movq %%rsp, %0" : "=r" (sp) );	// no clue why these aren't working
-	asm ("movq %%rbp, %0" : "=r" (bp) );
-	asm ("movq (%%rbp), %0" : "=r" (bp2));
-	std::cerr << "sp: " << (void*) sp << std::endl;
-	std::cerr << "bp, from register: " << (void*)bp << std::endl;
-	std::cerr << "128(%%rbp): " << (void*)bp2 << std::endl;
-*/
-
-
-    asm("saveregs:");
+void x86_trampoline() {
+    
+asm("saveregs:");
 	asm("pushq %rax;");
 	asm("pushq %rdx;");
 	asm("pushq %rcx;");
@@ -797,8 +792,8 @@ void x86_trampoline(uint64_t arg) {
 //	asm ("movq 128(%%rsp), %0" : "=r" (bp2));
 	register uint64_t *r15 asm("r15");
 	register uint64_t *r14 asm("r14");
-	register uint64_t *r11 asm("r11");
-
+	register uint64_t *r11 asm("r11");	
+	register intptr_t r9 asm("r9"); // scratch
 
 	asm ("movq %%rsp, %0" : "=r" (r15) );
 	asm ("movq %rsp, %r13");
@@ -806,62 +801,21 @@ void x86_trampoline(uint64_t arg) {
 	asm ("movq %%r13, %0" : "=r" (r14) ); // pointer to start of pushed values
 	asm ("movq %%rbp, %0" : "=r" (r11) ); // base pointer!
 
-/*	std::cerr << "SP:  " << (void*) r15 << std::endl;
-	std::cerr << "SP+120: " << (void*) r14 << std::endl;
-	std::cerr << "*(SP+120): " << *(uint64_t*)r14 << std::endl;
-	std::cerr << "*(SP+120) in assembly: " << (uint64_t*)r9 << std::endl;
+	return_value = reconstructInterpreterPassthrough(r11, r14, r15, &return_register);
 
-//	std::cerr << "RAX: " << (void*)rax << std::endl;
-	std::cerr << "Arg: " << arg << std::endl;
-	std::cerr << "Arg memroy location: " << (void*)&arg << std::endl;
-	std::cerr << "RAX direct as memory location " << (void*)r11 << std::endl;
-	std::cerr << "RAX as Value: " << (uint64_t)r11 << std::endl;
-*/
 
-	Interpreter::reconstructInterpreterPassthrough(r11, r14, r15);
-//	uint64_t *sp_end = sp;
 
-	// may need return address, which is 8(bsp)?
-/*	register uint64_t *bp asm("rbp");
 
-	uint64_t *sp_ptr;
-	uint64_t *bp_ptr;
-	uint64_t val;
-	asm ("movq %%rsp, %0" : "=r" (sp_ptr) );	// no clue why these aren't working
-	asm ("movq %%rbp, %0" : "=r" (bp_ptr) );
-	
-	std::cerr << "SP from movq: " << (void*) sp_ptr << std::endl;
-	std::cerr << "SP from register: " << (void*) sp << std::endl;
-*/
 	
 
 
-/*
-	std::cerr << "bp, from register: " << (void*)bp << std::endl;
-//	std::cerr << "128(%%rbp): " << (void*)bp2 << std::endl;
-//	asm("movq -40(%%rbp), %0" : "=r" (sp));
-//	asm("movq -48(%%rbp), %0" : "=r" (bp));
-
-	uint64_t rax;
-	asm("movq %%rax, %0" : "=r" (rax));
-	std::cerr << "Rax: " << rax << std::endl;
-	register uint64_t rax_ asm("rax");
-	std::cerr << "Rax from `register`: " << rax_ << std::endl;
-	uint64_t rax__; 
-	asm("movq 8(%%rbp), %0" : "=r" (rax__));
-	std::cerr << "8(%rbp): " << rax__ << std::endl;
-// c convention: arg == rax 
-*/
+//	auto faddr = &(Interpreter::reconstructInterpreterPassthrough);
+//	std::string addr_string;
+//	std::ostringstream ost;
+//	ost << faddr;
+//   addr_string = ost.str();
+//	const std::string call = "call " + addr_string;
 	
-
-
-/*	auto faddr = &(Interpreter::reconstructInterpreterPassthrough);
-	std::string addr_string;
-	std::ostringstream ost;
-	ost << faddr;
-    addr_string = ost.str();
-	const std::string call = "call " + addr_string;
-*/	
 	// pop all the register args off
     asm("popq %r15");                                             
     asm("popq %r14");	
@@ -879,9 +833,64 @@ void x86_trampoline(uint64_t arg) {
 	asm("popq %rcx");	
 	asm("popq %rdx");
     asm("popq %rax"); 	
+	
+	
+	// this is really bad but I just need to get it working...
+	switch(return_register) {
+		case 0:
+			asm("movq %0 %%rax" : : "g" return_value : ); 
+			break;
+		case 1:
+			asm("movq %0 %%rdx" : : "g" return_value : ); 
+			break;
+			
 
+		case 2:
+			asm("movq %0, %%rcx" : : "g" (return_value) : ); 
+			break;
+		case 3:
+			asm("movq %0, %%rbx" : : "g" (return_value) : ); 
+			break;
+		case 4:
+			asm("movq %0, %%rsi" : : "g" (return_value) : ); 
+			break;
+		case 5:
+			asm("movq %0, %%rdi" : : "g" (return_value) : ); 
+			break;
+		case 6:
+			asm("movq %0, %%rbp" : : "g" (return_value) : ); 
+			break;
+		case 7:
+			asm("movq %0, %%rsp" : : "g" (return_value) : ); 
+			break;
+		case 8:
+			asm("movq %0, %%r8" : : "g" (return_value) : ); 
+			break;
+		case 9:
+			asm("movq %0, %%r9" : : "g" (return_value) : ); 
+			break;
+		case 10:
+			asm("movq %0, %%r10" : : "g" (return_value) : ); 
+			break;
+		case 11:
+			asm("movq %0, %%r11" : : "g" (return_value) : ); 
+			break;
+		case 12:
+			asm("movq %0, %%r12" : : "g" (return_value) : ); 
+			break;
+		case 13:
+			asm("movq %0, %%r13" : : "g" (return_value) : ); 
+			break;
+		case 14:
+			asm("movq %0, %%r14" : : "g" (return_value) : ); 
+			break;
+		case 15:
+			asm("movq %0, %%r15" : : "g" (return_value) : ); 
+			break;
+	}
 }
 
+*/
 // TODO
 // create a void function that is the target of the patchpoint call
 // can't pass any arguments since the C argument registers will have been repurposed

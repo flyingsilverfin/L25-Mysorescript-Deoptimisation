@@ -42,9 +42,12 @@ StackMapParser::StackMapParser(uint64_t location)
 
 	//sanity check
 	assert(*base == 3); // version is hardcoded to 3
-	for (uint8_t i = 0; i < 240; i++) {
-		std::cerr << "Byte " << std::to_string(i) << " : " << std::to_string(*(base+i)) << "\tAddress: " << (void*)(base+i) << std::endl;
-	}
+
+// print out stack for debugging
+//	for (uint8_t i = 0; i < 240; i++) {
+//		std::cerr << "Byte " << std::to_string(i) << " : " << std::to_string(*(base+i)) << "\tAddress: " << (void*)(base+i) << std::endl;
+//	}
+//
 	std::cerr << "Num Functions: " << getNumFunctions();
 	std::cerr << "  Num Constants: " << getNumConstants();
 	std::cerr << "  Num Records: " << getNumRecords() << std::endl;

@@ -88,12 +88,13 @@ class SMRecordParser {
 			num_locations = *position.u16++;
 
 
-			std::cerr << "Register stack: \n";
+/*			std::cerr << "Register stack: \n";
 			// testing!
 			for (uint64_t i = 0; i < 16; i++) {
 				uint64_t *loc = registers_start - i;
 				std::cerr << "\t64 Bit value at: " << loc << "\tis:\t" << *(loc) << std::endl;
 			}
+*/
 		}	
 
 		// retrieves the next value in the stackmap!

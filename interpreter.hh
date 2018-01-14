@@ -9,9 +9,10 @@ namespace Interpreter
 {
 
 
+extern "C" {
 	// pass through function
-	void *reconstructInterpreterPassthrough(uint64_t *bp, uint64_t *sps, uint64_t *sp);
-
+	void *reconstructInterpreterPassthrough(uint64_t *bp, uint64_t *sps, uint64_t *sp, uint64_t *ret_reg);
+}
 
 	/**
 	 * Force the compiler to run.  This overrides the compile threshold and
