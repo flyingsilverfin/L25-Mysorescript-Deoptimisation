@@ -360,6 +360,9 @@ CompiledMethod ClosureDecl::compileMethod(Class *cls,
 		(*alloca)->setName(local);
 		// Initialise all local variables with null.
 		c.B.CreateStore(ConstantPointerNull::get(c.ObjPtrTy), *alloca);
+
+		
+
 		c.symbols[local] = *(alloca++);
 	}
 	// Next we need to add the instance variables to the symbol table.
@@ -782,7 +785,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 	num_args++; // testing
 	std::cerr << "Number of locals + bound vars: " << num_args - 2 << std::endl;
 	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), num_args)); 
-
+// test value
 	stackmap_args.push_back(ConstantInt::get(Type::getInt64Ty(c.C), 199));
 
 	
@@ -791,20 +794,26 @@ Value *Call::compileExpression(Compiler::Context &c)
 	// 1. pointer to AST node to resume at
 	// 2. values of all local decls (using standard iterator)
 	// 3. values of all bound vars (using standard iterator)
-	
+
+
+	std::cerr << "'this' ptr to Call that we exited at: " << (void*) this << std::endl;
+
 	// AST Node to resume at
 	stackmap_args.push_back(staticAddress(c, this, c.ObjPtrTy));
 
 	// decls
 	// rely on deterministic hashing...
 	for (auto &local : currentlyCompiling->decls) {
-		stackmap_args.push_back(staticAddress(c, c.symbols[local], c.ObjPtrTy));
+		std::cerr << "Saving local c.symbols[" << local << "] = " << c.symbols[local] << std::endl;
+//		stackmap_args.push_back(staticAddress(c, c.symbols[local], c.ObjPtrTy->getPointerTo()));
+		stackmap_args.push_back(c.B.CreateLoad(c.symbols[local]));
 	}
 
 	// bound vars
 	if (!currentlyCompiling->boundVars.empty()) {
 		for (auto &bound : currentlyCompiling->boundVars) {
-			stackmap_args.push_back(staticAddress(c, c.symbols[bound], c.ObjPtrTy));
+//			stackmap_args.push_back(staticAddress(c, c.symbols[bound], c.ObjPtrTy->getPointerTo()));
+			stackmap_args.push_back(c.B.CreateLoad(c.symbols[bound]));
 		}
 	}
 
@@ -971,7 +980,11 @@ void Decl::compile(Compiler::Context &c)
 	if (init)
 	{
 		assert(c.symbols[name]);
-		c.B.CreateStore(getAsObject(c, init->compileExpression(c)),
+		Value *v = init->compileExpression(c);
+		std::cerr << "Storing " << name << " = " ;
+		v->dump();
+		std::cerr << " Storing declaration to addr: " << c.symbols[name] << std::endl;
+		c.B.CreateStore(getAsObject(c, v),
 				c.symbols[name]);
 	}
 }
@@ -979,7 +992,11 @@ void Assignment::compile(Compiler::Context &c)
 {
 	assert(c.symbols[target->name]);
 	// Store the result of the expression in the address of the named variable.
-	c.B.CreateStore(getAsObject(c, expr->compileExpression(c)),
+	Value *v = getAsObject(c, expr->compileExpression(c));
+	std::cerr << "Storing " << target->name << " = ";
+	v->dump();
+	std::cerr << " Storing assignment to addr: " << c.symbols[target->name] << std::endl;
+	c.B.CreateStore(v,
 			c.symbols[target->name]);
 }
 

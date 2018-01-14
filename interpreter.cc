@@ -72,6 +72,11 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 	pegmatite::ASTNode* resume_node = (pegmatite::ASTNode*)record_parser.next_value();
 	std::cerr << "AST node to resume at: " << (void*)resume_node << std::endl;
 
+	// for now we're restricted to inline caching so the resume node has to be a call instruction
+	Call* call = dynamic_cast<Call*>(resume_node);
+	std::cerr << "Call instruction has arg: ";
+	std::cerr << call->arguments.get()->arguments.size() << std::endl;
+
 	// decls
 	// rely on deterministic hashing... is there a better way of doing this?
 	// perhaps don't use an unordered map?
@@ -80,16 +85,15 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 		//reconstructed_values[local] =
 		auto val = record_parser.next_value();
 		std::cerr << "Retrieved local from stackmap: " << local << " = " << std::to_string(val) << std::endl; 
-		int64_t v = *(int8_t*)val;
-		std::cerr << "Derferenced as 8 bit ptr: " << v << std::endl; 	
+		int8_t **v = (int8_t**)val;
+		std::cerr << "As i8**: " << (void*)v << std::endl; 	
 	}
 
 	// bound vars
 	if (!cur_jit_function->boundVars.empty()) {
 		for (auto &bound : cur_jit_function->boundVars) {
 			auto val = record_parser.next_value();
-			std::cerr << " Retrieved bound var from stackmap: " << bound << " = " << std::to_string(val) << std::endl;	
-			std::cerr << "Derferenced as 8 bit ptr: " << *(uint8_t*)val << std::endl; 	
+			std::cerr << "Retrieved bound from stackmap: " << bound << " = " << std::to_string(val) << std::endl;
 		}
 	}
 	
