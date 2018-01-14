@@ -801,6 +801,10 @@ Value *Call::compileExpression(Compiler::Context &c)
 	// AST Node to resume at
 	stackmap_args.push_back(staticAddress(c, this, c.ObjPtrTy));
 
+	// self and cmd pointers
+	stackmap_args.push_back(c.B.CreateLoad(c.symbols["self"]));
+	stackmap_args.push_back(c.B.CreateLoad(c.symbols["cmd"]));
+
 	// decls
 	// rely on deterministic hashing...
 	for (auto &local : currentlyCompiling->decls) {
@@ -818,13 +822,14 @@ Value *Call::compileExpression(Compiler::Context &c)
 	}
 
 
-	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_patchpoint_void);
+	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_patchpoint_i64);
 	CallInst *func_call = CallInst::Create(fun, stackmap_args);
 	func_call->setCallingConv(CallingConv::AnyReg);
-	c.B.Insert(func_call);
+	Value *value_from_interpreter = c.B.Insert(func_call);
 
 
-
+	c.B.CreateRet(getAsObject(c, value_from_interpreter));
+	
 	
 
 

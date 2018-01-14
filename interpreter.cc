@@ -63,8 +63,8 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 	
 	SMRecordParser record_parser(record_pointer, regs_start, regs_end);
 	
-	Interpreter::SymbolTable reconstructed_values;	
-	
+	Interpreter::SymbolTable *reconstructed_values = new Interpreter::SymbolTable();	
+	Interpreter::SymbolTable &symtab = *reconstructed_values; // for ease of use...	
 	// test value, 199
 	std::cerr << "Retrieved test value from stackmap (=199): \n  " << record_parser.next_value() << std::endl;
 
@@ -73,20 +73,23 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 	std::cerr << "AST node to resume at: " << (void*)resume_node << std::endl;
 
 	// for now we're restricted to inline caching so the resume node has to be a call instruction
-	Call* call = dynamic_cast<Call*>(resume_node);
-	std::cerr << "Call instruction has arg: ";
-	std::cerr << call->arguments.get()->arguments.size() << std::endl;
+	Statement* call = dynamic_cast<Statement*>(resume_node);
+
+
+	// self and cmd (selector) pointers
+	Obj* self = (Obj*) record_parser.next_value();
+	Obj* cmd = (Obj*) record_parser.next_value(); // already a uint32 encoded in a ptr
+	symtab["self"] = self;
+	symtab["cmd"] = cmd;
 
 	// decls
 	// rely on deterministic hashing... is there a better way of doing this?
 	// perhaps don't use an unordered map?
 	// should be ok though since it's all within 1 execution and no elements being added after parse
 	for (auto &local : cur_jit_function->decls) {
-		//reconstructed_values[local] =
 		auto val = record_parser.next_value();
 		std::cerr << "Retrieved local from stackmap: " << local << " = " << std::to_string(val) << std::endl; 
-		int8_t **v = (int8_t**)val;
-		std::cerr << "As i8**: " << (void*)v << std::endl; 	
+		symtab[local] = (Obj *)val;
 	}
 
 	// bound vars
@@ -94,16 +97,30 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 		for (auto &bound : cur_jit_function->boundVars) {
 			auto val = record_parser.next_value();
 			std::cerr << "Retrieved bound from stackmap: " << bound << " = " << std::to_string(val) << std::endl;
+			symtab[bound] = (Obj *)val;
 		}
 	}
+
+	// saved them!
+	currentContext->pushSymbols(symtab);
+	//DONE HERE! :D
 	
-	
+
+	// I'm just going to try to get this working from here!
 
 }
 
-//Obj resumeInInterpreter(Statement* ast_node, Statement* ClosureDecl) {
-//	std::cerr << "Jumped back to interpreter!" << std::endl;
-//}
+Obj resumeInInterpreter(Statement* ast_node) {
+	ClosureDecl* root = Interpreter::cur_jit_function;
+
+	root->skip_to(*currentContext, as_node);
+	std::cerr << "---Finished in interpreter---\n";
+	std::cerr << "Context.isReturning: " << std::to_string(currentContext->isReturning) << std::endl;
+	std::cerr << "Context.returnValue: " << std::to_string(currentContext->retVal) << std::endl;
+	currentContext->isReturning = false;
+	currentContext.popSymbols();
+	return currentContext.retVal;
+}
 
 
 
