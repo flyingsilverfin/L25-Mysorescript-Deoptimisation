@@ -310,6 +310,8 @@ Class *getClassFor(Obj obj);
  * function that jumps back into the interpreter.
  */
 CompiledMethod compiledMethodForSelector(Obj obj, Selector sel);
+
+CompiledMethod *ptrToCompiledMethodForSelector(Obj obj, Selector sel);
 }
 
 /**

@@ -22,13 +22,31 @@ inline bool needsGC(Obj o)
 
 Interpreter::Context *currentContext;
 
+void msg(const char *m) {
+	std::cerr << m << std::endl;
+}
+
+Obj resumeInInterpreter(Statement* ast_node) {
+	ClosureDecl* root = cur_jit_function;
+	
+	msg("*Beginning skip_to");
+	
+
+	root->skip_to(*currentContext, ast_node);
+	std::cerr << "---Finished in interpreter---\n";
+	std::cerr << "Context.isReturning: " << std::to_string(currentContext->isReturning) << std::endl;
+	std::cerr << "Context.returnValue: " << (void*)(currentContext->retVal) << std::endl;
+	currentContext->isReturning = false;
+	currentContext->popSymbols();
+	return (Obj) (9); // return some integer type
+}
 
 // SP points to bottom of assembly trampoline's stack frame
 // IE the last register saved, r15
 // bp points at the previous bp. The address "above it" is the return address for the trampoline
 // we need this to look up the return address which 
 // return address at 8(%bp) == stackmap_record_offset + stackmap_function_address
-void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *regs_end) {
+void *reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *regs_end) {
 
 
 	std::cerr << "return value 8(bp) or *(ptr+1): " << *(bp+1) << std::endl;
@@ -55,7 +73,7 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 		// this needs to equal the return address found at *(bp+1) 
 		//   off by one??
 		std::cerr << "More than 1 record in this stackmap! UNIMPLIMENTED." << std::endl;
-		return;
+		return nullptr;
 	}
 
 	// now we need to iterate through the decls, then bound vars and retrieve these in order
@@ -66,21 +84,30 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 	Interpreter::SymbolTable *reconstructed_values = new Interpreter::SymbolTable();	
 	Interpreter::SymbolTable &symtab = *reconstructed_values; // for ease of use...	
 	// test value, 199
-	std::cerr << "Retrieved test value from stackmap (=199): \n  " << record_parser.next_value() << std::endl;
+	std::cerr << "Retrieved Return loc from stackmap " << record_parser.next_value() << std::endl;
+//	std::cerr << "Retrieved test value from stackmap (=199): \n  " << record_parser.next_value() << std::endl;
 
 	// AST pointer to resume at
-	pegmatite::ASTNode* resume_node = (pegmatite::ASTNode*)record_parser.next_value();
-	std::cerr << "AST node to resume at: " << (void*)resume_node << std::endl;
-
-	// for now we're restricted to inline caching so the resume node has to be a call instruction
-	Statement* call = dynamic_cast<Statement*>(resume_node);
-
+	uint64_t resume_node_int = record_parser.next_value();
+	pegmatite::ASTNode* resume_ast = (pegmatite::ASTNode*)(resume_node_int);
+	std::cerr << "AST node to resume at: " << (void*)resume_ast << std::endl;
+	AST::Statement *resume_stmt = dynamic_cast<AST::Statement*>(resume_ast);
 
 	// self and cmd (selector) pointers
 	Obj* self = (Obj*) record_parser.next_value();
-	Obj* cmd = (Obj*) record_parser.next_value(); // already a uint32 encoded in a ptr
+//	Obj* cmd = (Obj*) record_parser.next_value(); // already a uint32 encoded in a ptr
 	symtab["self"] = self;
-	symtab["cmd"] = cmd;
+//	symtab["cmd"] = cmd;
+
+	// params
+	for (auto &param : cur_jit_function->parameters->arguments) {
+		auto val = record_parser.next_value();
+		std::cerr << "Retrieved parameter addr from stackmap: " << *param.get() << " = " << std::to_string(val);
+		std::cerr << "; deref: " << std::to_string(*(uint64_t*)val) << std::endl;
+
+		symtab[*param.get()] = (Obj *)val;
+	}
+
 
 	// decls
 	// rely on deterministic hashing... is there a better way of doing this?
@@ -88,7 +115,8 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 	// should be ok though since it's all within 1 execution and no elements being added after parse
 	for (auto &local : cur_jit_function->decls) {
 		auto val = record_parser.next_value();
-		std::cerr << "Retrieved local from stackmap: " << local << " = " << std::to_string(val) << std::endl; 
+		std::cerr << "Retrieved local addr from stackmap: " << local << " = " << std::to_string(val) << std::endl; 
+		std::cerr << "; deref: " << std::to_string(*(uint64_t*)val) << std::endl;
 		symtab[local] = (Obj *)val;
 	}
 
@@ -96,7 +124,8 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 	if (!cur_jit_function->boundVars.empty()) {
 		for (auto &bound : cur_jit_function->boundVars) {
 			auto val = record_parser.next_value();
-			std::cerr << "Retrieved bound from stackmap: " << bound << " = " << std::to_string(val) << std::endl;
+			std::cerr << "Retrieved bound addr from stackmap: " << bound << " = " << std::to_string(val) << std::endl;
+		std::cerr << "; deref: " << std::to_string(*(uint64_t*)val) << std::endl;
 			symtab[bound] = (Obj *)val;
 		}
 	}
@@ -104,24 +133,11 @@ void reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t 
 	// saved them!
 	currentContext->pushSymbols(symtab);
 	//DONE HERE! :D
-	
 
+	return resumeInInterpreter(resume_stmt);
 	// I'm just going to try to get this working from here!
 
 }
-
-Obj resumeInInterpreter(Statement* ast_node) {
-	ClosureDecl* root = Interpreter::cur_jit_function;
-
-	root->skip_to(*currentContext, as_node);
-	std::cerr << "---Finished in interpreter---\n";
-	std::cerr << "Context.isReturning: " << std::to_string(currentContext->isReturning) << std::endl;
-	std::cerr << "Context.returnValue: " << std::to_string(currentContext->retVal) << std::endl;
-	currentContext->isReturning = false;
-	currentContext.popSymbols();
-	return currentContext.retVal;
-}
-
 
 
 using MysoreScript::Closure;
@@ -377,8 +393,8 @@ namespace Interpreter
 {
 
 
-	void reconstructInterpreterPassthrough(uint64_t* bp, uint64_t *sps, uint64_t *sp) {
-		reconstructInterpreterContext(bp, sps, sp);
+	void *reconstructInterpreterPassthrough(uint64_t* bp, uint64_t *sps, uint64_t *sp) {
+		return reconstructInterpreterContext(bp, sps, sp);
 	}
 
 
@@ -484,11 +500,29 @@ void Context::setSymbol(const std::string &name, Obj *val)
 // Interpreter methods on AST classes
 ////////////////////////////////////////////////////////////////////////////////
 
+void Statements::skip_to(Interpreter::Context &c, Statement* ast_node) {
+	for (auto &s : statements) {
+		msg("**Skip to in Statements for loop**");
+		if (c.isReturning) {
+			msg("***Hit isReturning within Statements loop***");
+			return;
+		}
+		if (c.astNodeFound) {
+			msg("***Found AST node within Statements loop***");
+			s->interpret(c);
+		} else {
+			s->skip_to(c, ast_node);
+		}
+	}
+	msg("Exiting Statements without finding a return");
+}
+
+
 void Statements::interpret(Interpreter::Context &c)
 {
 	for (auto &s : statements)
 	{
-		// If we've executed a return statement, then stop executing.
+	// If we've executed a return statement, then stop executing.
 		if (c.isReturning)
 		{
 			return;
@@ -505,6 +539,7 @@ void Statements::collectVarUses(std::unordered_set<std::string> &decls,
 		s->collectVarUses(decls, uses);
 	}
 }
+
 
 Obj Expression::evaluate(Interpreter::Context &c)
 {
@@ -524,13 +559,12 @@ Obj Expression::evaluate(Interpreter::Context &c)
 	return r;
 }
 
-Obj Call::evaluateExpr(Interpreter::Context &c)
-{
+Obj Call::do_call(Interpreter::Context &c, Obj obj) {
+
 	// Array of arguments.  
 	Obj args[10];
 	// Get the callee, which is either a closure or some other object that will
 	// have a method on it invoked.
-	Obj obj = callee->evaluate(c);
 	assert(obj);
 	auto &argsAST = arguments->arguments;
 	size_t i=0;
@@ -558,19 +592,52 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 	Selector sel = lookupSelector(*method.get());
 	assert(sel);
 
-	CompiledMethod mth;
-	Class *cls = getClassFor(obj);
-	if (cachedMethod != nullptr && cls == cachedClass) {
+	Class *cls = nullptr;
+	if (obj) {
+		if (isInteger(obj)) {
+			cls = &SmallIntClass;
+		} else {
+			cls = obj->isa;
+		}
+	}
+
+	// inline caching
+	CompiledMethod *mth;
+	if (cls == cachedClass && cachedMethod != nullptr) {
 		mth = cachedMethod;
 	} else {
-		mth = compiledMethodForSelector(obj, sel);
+		mth = ptrToCompiledMethodForSelector(obj, sel);
 		cachedMethod = mth;
 		cachedClass = cls;
 	}
-	assert (mth);
+	assert( mth && *mth);
 	
 	// Call the method.
-	return callCompiledMethod(mth, obj, sel, args, arguments->arguments.size());
+	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
+}
+
+Obj Call::expr_skip_to(Interpreter::Context &c, Statement* ast_node) { 
+	msg("* Call skip_to");
+	Obj obj = callee->expr_skip_to(c, ast_node);
+	msg("* Call skip_to : expr to call evaluated");
+	if (c.astNodeFound) {
+		msg("* Call skip_to: EXPR contained node!! Executing call");
+		return do_call(c, obj); 
+	} 
+	if (this == ast_node) {
+		msg("* Call skip_to: THIS is the node!, executing!");
+		c.astNodeFound = true;
+		return do_call(c, obj);	
+	} 
+	// otherwise...
+	return nullptr;  // nothing to do	
+
+}
+
+Obj Call::evaluateExpr(Interpreter::Context &c)
+{
+	Obj obj = callee->evaluate(c);
+	return do_call(c, obj);
 }
 
 Obj VarRef::evaluateExpr(Interpreter::Context &c)
@@ -613,13 +680,44 @@ void ClosureDecl::check()
 void ClosureDecl::collectVarUses(std::unordered_set<std::string> &decls,
                                  std::unordered_set<std::string> &uses)
 {
-	// Find all of the vggariables that are used by this closure.
+	// Find all of the variables that are used by this closure.
 	check();
 	// Add any bound variables to the use list
 	uses.insert(boundVars.begin(), boundVars.end());
 	// Add the name of this closure to the declared list in the enclosing scope.
 	decls.insert(name);
 }
+
+
+/*
+ * THIS is the root of the skip_to call due to method-granularity JITing
+ * the symbol table should all be set up right from the preceeding reconstructInterpreter call
+ * which copies the JIT symbol table into the interpreter symbol table
+ * including the self and cmd values! TODO hope this works
+ */
+
+Obj ClosureDecl::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
+	msg("-| Enter ClosureDecl expr_skip_to");
+// Interpret the statements in this method;
+body->skip_to(c, ast_node);
+assert(c.astNodeFound || "Searched ClosureDecl body for node but astNodeFound is false?");
+/* This is all done in the initiating function resumeInInterpreter
+ *
+// Return the return value.  Make sure it's set back to nullptr after we've
+// copied it so that we always return null from any method that doesn't
+// explicitly return.
+Obj retVal = c.retVal;
+c.retVal = nullptr;
+c.isReturning = false;
+c.astNodeFound = false; // reset
+	// Pop the symbols off the symbol table (very important, as they reference
+	// this stack frame!
+	c.popSymbols();	
+	return retVal;
+*/
+	return nullptr; // will be retrieved by caller
+}
+
 
 Obj ClosureDecl::evaluateExpr(Interpreter::Context &c)
 {
@@ -713,7 +811,7 @@ Obj ClosureDecl::interpretMethod(Interpreter::Context &c, Method *mth, Obj self,
 	c.retVal = nullptr;
 	c.isReturning = false;
 	// Pop the symbols off the symbol table (very important, as they reference
-	// our stack frame!)
+	// our stack frame!
 	c.popSymbols();
 	return retVal;
 }
@@ -774,6 +872,9 @@ Obj ClosureDecl::interpretClosure(Interpreter::Context &c, Closure *self,
 	return retVal;
 }
 
+// StringLiteral shouldn't need a specialized skip_to method...
+// Obj StringLiteral::skip_to(Interpreter::Context &c, Statement* ast_node) ;
+
 Obj StringLiteral::evaluateExpr(Interpreter::Context &c)
 {
 	// Construct a string object.
@@ -788,6 +889,26 @@ Obj StringLiteral::evaluateExpr(Interpreter::Context &c)
 	return reinterpret_cast<Obj>(str);
 }
 
+
+void IfStatement::skip_to(Interpreter::Context &c, Statement* ast_node) {
+	// check the condition
+	// if it contains the node we're looking for, take the result of that expression
+	// do the same check as the interpret  method
+	// and interpret the body
+	Obj cond = condition->expr_skip_to(c, ast_node);
+	if (c.astNodeFound && ((reinterpret_cast<intptr_t>(cond)) & ~7)) {
+		body->interpret(c);
+		return;
+	}
+
+	// check the body
+	// if the node we're looking for is in it, the condition is true
+	// also the skip_to will have finished evaluting the body
+	// so just need to run skip_to on it
+	body->skip_to(c, ast_node);
+
+}
+
 void IfStatement::interpret(Interpreter::Context &c)
 {
 	if ((reinterpret_cast<intptr_t>(condition->evaluate(c))) & ~7)
@@ -795,6 +916,34 @@ void IfStatement::interpret(Interpreter::Context &c)
 		body->interpret(c);
 	}
 }
+
+void WhileLoop::skip_to(Interpreter::Context &c, Statement* ast_node) {
+	// check the condition
+	// if it contains the node we want, take the result of that expression and continue as interpreter
+	
+
+	// TODO how to handle isReturning here...
+	// I'm quite sure isReturning can never be true if we're in skip_to not having found the node yet
+	// IE. if we're in the condition, we can never returning from a method/function
+//	if (!c.isReturning) {
+//
+	Obj cond = condition->expr_skip_to(c, ast_node);
+	if (c.astNodeFound && (reinterpret_cast<intptr_t>(condition->evaluate(c))) & ~7) {
+		body->interpret(c);
+		// now we can just resume the loop in the usual interpret()
+		interpret(c);
+		return;
+	}
+
+	// otherwise we can check the body
+	body->skip_to(c, ast_node);
+	if (c.astNodeFound) {
+		// found the node! continue interpreting 
+		interpret(c);
+	}
+	// otherwise keep tree searching
+}
+
 void WhileLoop::interpret(Interpreter::Context &c)
 {
 	while (!c.isReturning && (reinterpret_cast<intptr_t>(condition->evaluate(c))) & ~7)
@@ -802,6 +951,18 @@ void WhileLoop::interpret(Interpreter::Context &c)
 		body->interpret(c);
 	}
 }
+
+void Decl::skip_to(Interpreter::Context &c, Statement* ast_node) {
+	Obj v = nullptr;
+	if (init) {
+		v = init->expr_skip_to(c, ast_node);
+		if (c.astNodeFound) { //ie. the node to resume at is below this node in the AST
+			c.setSymbol(name, v);
+		}
+	}
+}
+
+
 void Decl::interpret(Interpreter::Context &c)
 {
 	// Declarations don't normally allocate space for variables, but at the
@@ -814,15 +975,19 @@ void Decl::interpret(Interpreter::Context &c)
 	c.setSymbol(name, v);
 }
 
+void Assignment::skip_to(Interpreter::Context &c, Statement* ast_node)  {
+	Obj result = expr->expr_skip_to(c, ast_node);
+	if (c.astNodeFound) {
+		c.setSymbol(target->name, result);
+	}
+}
+
 void Assignment::interpret(Interpreter::Context &c)
 {
 	c.setSymbol(target->name, expr->evaluate(c));
 }
 
-Obj BinOpBase::evaluateExpr(Interpreter::Context &c)
-{
-	Obj LHS = lhs->evaluate(c);
-	Obj RHS = rhs->evaluate(c);
+Obj BinOpBase::performOp(Interpreter::Context &c, Obj LHS, Obj RHS) {
 	// If this is a comparison, then we're doing a pointer-compare even if
 	// they're objects.  If both sides are small integers, then ask the subclass
 	// to look up their integer values.
@@ -844,6 +1009,56 @@ Obj BinOpBase::evaluateExpr(Interpreter::Context &c)
 	return (reinterpret_cast<Obj(*)(Obj,Selector,Obj)>(mth))(LHS, sel, RHS);
 }
 
+
+Obj BinOpBase::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
+	Obj LHS = lhs->expr_skip_to(c, ast_node);
+	// LHS contains node we're looking for, interpret RHS and OP
+	if (c.astNodeFound) {
+		Obj RHS = rhs->evaluate(c);
+		return performOp(c, LHS, RHS);
+	}
+
+	Obj RHS = rhs->expr_skip_to(c, ast_node);
+	if (c.astNodeFound) {
+		// TODO get the LHS from the compiled execution of lhs
+		Obj LHS_compiled_val = nullptr;
+		return performOp(c, LHS_compiled_val, RHS);
+	}
+
+	// the binary op itself shouldn't be what we're looking for...?
+	if (this == ast_node) {
+		std::cerr << "HELP BinOp matched ast_node, this is unimplemented" << std::endl;
+		c.astNodeFound = true;
+	}
+
+	return nullptr; //doesn't matter, will be ignored since didn't find ast node
+
+}
+
+
+Obj BinOpBase::evaluateExpr(Interpreter::Context &c)
+{
+	Obj LHS = lhs->evaluate(c);
+	Obj RHS = rhs->evaluate(c);
+	return performOp(c, LHS, RHS);
+}
+
+void Return::skip_to(Interpreter::Context &c, Statement* ast_node) {
+	Obj ret_val = expr->expr_skip_to(c, ast_node);
+	if (c.astNodeFound) {
+		c.retVal = ret_val;
+		c.isReturning = true;
+		return;
+	} 
+
+	if (this == ast_node) {
+		std::cerr << "HELP Return matched ast_node, this is unimplemented" << std::endl;
+		c.astNodeFound = true;
+	}
+}
+
+
+
 void Return::interpret(Interpreter::Context &c)
 {
 	// Evaluate the returned expression and then indicate in the interpreter
@@ -852,17 +1067,12 @@ void Return::interpret(Interpreter::Context &c)
 	c.isReturning = true;
 }
 
+
 void ClassDecl::interpret(Interpreter::Context &c)
 {
 	// Construct the new class.  The class table persists over the lifetime of
 	// the program, so memory allocated here is never freed.
 	Class *cls = new Class();
-
-	// set static pointer to resumeInInterpreter
-//	Class::resumeInInterpreter = resumeInInterpreter;
-
-
-
 	// Due to the way automatic AST construction works, we'll end up with the
 	// class name in the superclass name field if we don't have a superclass.
 	std::string &clsName = name ? *name : superclassName;

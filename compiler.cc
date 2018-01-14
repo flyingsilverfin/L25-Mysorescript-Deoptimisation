@@ -779,19 +779,21 @@ Value *Call::compileExpression(Compiler::Context &c)
 	stackmap_args.push_back(func_i8ptr); // needs an i8*... not sure what getOrInsert returns
 
 	// need to insert the number of arguments to the function
-	uint32_t num_args = 1; // AST node to resume at
+	uint32_t num_args = 2; // AST node to resume at, self, and //cmd
+	num_args += currentlyCompiling->parameters->arguments.size();
 	num_args += currentlyCompiling->decls.size(); // local vars
 	num_args += currentlyCompiling->boundVars.size(); // bound vars
-	num_args++; // testing
+//	num_args++; // testing
 	std::cerr << "Number of locals + bound vars: " << num_args - 2 << std::endl;
 	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), num_args)); 
 // test value
-	stackmap_args.push_back(ConstantInt::get(Type::getInt64Ty(c.C), 199));
+//	stackmap_args.push_back(ConstantInt::get(Type::getInt64Ty(c.C), 199));
 
 	
 	// --- arguments for the anyregcc call ---
 	// idea: insert, in order:
 	// 1. pointer to AST node to resume at
+	// 3. values of all parameters
 	// 2. values of all local decls (using standard iterator)
 	// 3. values of all bound vars (using standard iterator)
 
@@ -802,22 +804,33 @@ Value *Call::compileExpression(Compiler::Context &c)
 	stackmap_args.push_back(staticAddress(c, this, c.ObjPtrTy));
 
 	// self and cmd pointers
-	stackmap_args.push_back(c.B.CreateLoad(c.symbols["self"]));
-	stackmap_args.push_back(c.B.CreateLoad(c.symbols["cmd"]));
+//	stackmap_args.push_back(c.B.CreateLoad(c.symbols["self"]));
+	stackmap_args.push_back(c.symbols["self"]);
+//	stackmap_args.push_back(c.B.CreateLoad(c.symbols["cmd"]));
+//	stackmap_args.push_back(c.symbols["cmd"]);
+	// params
+	for (auto &param : currentlyCompiling->parameters->arguments) {
+//		stackmap_args.push_back(c.B.CreateLoad(c.symbols[*param.get()]));
+		stackmap_args.push_back(c.symbols[*param.get()]);
+	}
+
 
 	// decls
 	// rely on deterministic hashing...
 	for (auto &local : currentlyCompiling->decls) {
 		std::cerr << "Saving local c.symbols[" << local << "] = " << c.symbols[local] << std::endl;
 //		stackmap_args.push_back(staticAddress(c, c.symbols[local], c.ObjPtrTy->getPointerTo()));
-		stackmap_args.push_back(c.B.CreateLoad(c.symbols[local]));
+//		stackmap_args.push_back(c.B.CreateLoad(c.symbols[local]));
+		stackmap_args.push_back(c.symbols[local]);
 	}
 
 	// bound vars
 	if (!currentlyCompiling->boundVars.empty()) {
 		for (auto &bound : currentlyCompiling->boundVars) {
 //			stackmap_args.push_back(staticAddress(c, c.symbols[bound], c.ObjPtrTy->getPointerTo()));
-			stackmap_args.push_back(c.B.CreateLoad(c.symbols[bound]));
+//			stackmap_args.push_back(c.B.CreateLoad(c.symbols[bound]));			
+			stackmap_args.push_back(c.symbols[bound]);
+	
 		}
 	}
 
@@ -828,12 +841,12 @@ Value *Call::compileExpression(Compiler::Context &c)
 	Value *value_from_interpreter = c.B.Insert(func_call);
 
 
-	c.B.CreateRet(getAsObject(c, value_from_interpreter));
+	c.B.CreateRet(getAsObject(c, compileSmallInt(c, (intptr_t)(999))));
 	
 	
 
 
-
+/*
 
 	Constant *lookupFn = c.M->getOrInsertFunction("compiledMethodForSelector",
 			methodType->getPointerTo(), obj->getType(), c.SelTy);
@@ -852,11 +865,11 @@ Value *Call::compileExpression(Compiler::Context &c)
 	c.B.CreateStore(methodFn, ptrToCachedMethod);
 	c.B.CreateStore(phiObjClass, ptrToCachedClass);
 	c.B.CreateBr(rejoinBB);
-
+*/
 	// rejoin 
 	c.B.SetInsertPoint(rejoinBB);
-	PHINode *rejoined = c.B.CreatePHI(methodFn->getType(), 2, "rejoin");
-	rejoined->addIncoming(methodFn, slow);
+	PHINode *rejoined = c.B.CreatePHI(cachedMeth->getType(), 1, "rejoin");
+//	rejoined->addIncoming(methodFn, slow);
 	rejoined->addIncoming(cachedMeth, notNull);
 
 	// Call the method

@@ -156,7 +156,6 @@ while ( i < 100 ) {
 	v = getter(aclass); /* need SSA-like forms for now */
 	s = s + v;
 	s.dump();
-	i.dump();
 	i = i + 1;
 }
 s.dump();

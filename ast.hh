@@ -5,6 +5,7 @@
 #include <functional>
 #include <time.h>
 
+#include <iostream>
 
 namespace Compiler
 {
@@ -29,9 +30,10 @@ namespace AST
 	 */
 	struct Statement : pegmatite::ASTContainer
 	{
-		/**
-		 * Execute this statement in the interpreter.
-		 */
+		
+		virtual void skip_to(Interpreter::Context &c, Statement* ast_node) = 0;
+
+		 /* Execute this statement in the interpreter. */
 		virtual void interpret(Interpreter::Context &c) = 0;
 		/**
 		 * Compile this statement to LLVM IR.
@@ -54,6 +56,7 @@ namespace AST
 	class Expression : public Statement
 	{
 		protected:
+		
 		/**
 		 * Cached result for constant expression.
 		 */
@@ -63,6 +66,13 @@ namespace AST
 		 */
 		virtual Obj evaluateExpr(Interpreter::Context &c) = 0;
 		public:
+
+		void skip_to(Interpreter::Context &c, Statement* ast_node) override {
+			expr_skip_to(c, ast_node);	
+		}
+
+		virtual Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) = 0;
+
 		/**
 		 * Returns true if the expression is constant and therefore doesn't
 		 * need interpreting every time.  The result will be cached after the
@@ -81,8 +91,8 @@ namespace AST
 		{
 			evaluate(c);
 		}
-		/**
-		 * Compile this expression as if it were a statement.
+			/**
+			 * Compile this expression as if it were a statement.
 		 */
 		void compile(Compiler::Context &c) override final
 		{
@@ -99,6 +109,8 @@ namespace AST
 	 */
 	struct Statements : pegmatite::ASTContainer
 	{
+
+		void skip_to(Interpreter::Context &c, Statement* ast_node);				
 		/**
 		 * Interprets each of the statements in turn.  If the context is marked
 		 * as returning, then aborts execution and returns.
@@ -124,6 +136,17 @@ namespace AST
 	 */
 	struct Number : public Expression
 	{
+		
+		Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
+			if (ast_node == this) {
+				std::cerr << "HELP Number matched ast_node??" << std::endl;
+				c.astNodeFound = true;
+			}
+			return evaluateExpr(c);
+		}
+
+		// Can use default skip_to provided in Statement
+
 		/**
 		 * The value of this literal.  MysoreScript integers are 61 bits, so a
 		 * 64-bit integer is enough to store the value.
@@ -171,6 +194,15 @@ namespace AST
 	 */
 	struct StringLiteral : public Expression, pegmatite::ASTString
 	{
+
+		Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
+			if (ast_node == this) {
+				std::cerr << "HELP StringLiteral matched ast_node" << std::endl;
+				c.astNodeFound = true;
+			}
+			return evaluateExpr(c);
+		}
+
 		/**
 		 * Construct the string from the source text.
 		 */
@@ -212,6 +244,10 @@ namespace AST
 	 */
 	struct BinOpBase : public Expression
 	{
+	    Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override;
+	
+		Obj performOp(Interpreter::Context &c, Obj LHS, Obj RHS);	
+
 		/**
 		 * The left-hand side of the operation.
 		 */
@@ -475,6 +511,12 @@ namespace AST
 	struct ClosureDecl : Expression
 	{
 
+		// this is the root of any skip_ to call
+		// Context c has already been assembled correctly
+		// need to find sub-expression which represents node we stopped executing at before
+		Obj expr_skip_to(Interpreter::Context &c, Statement *ast_node) override; 
+
+
 		clock_t time_spent_in_compiled_method;
 
 		/**
@@ -486,6 +528,7 @@ namespace AST
 		 * Local variables declared inside this closure.
 		 */
 		std::unordered_set<std::string> decls;
+
 
 
 		/**
@@ -582,6 +625,15 @@ namespace AST
 	 */
 	struct VarRef : public Expression
 	{
+
+		Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
+			if (this == ast_node) {
+				std::cerr << "HELP VarRef matched ast_node, it shouldn't" << std::endl;
+				c.astNodeFound = true;
+			}
+			return evaluateExpr(c);
+		}
+
 		/**
 		 * The name of the referenced variable.
 		 */
@@ -612,6 +664,10 @@ namespace AST
 	 */
 	struct Assignment : Statement
 	{
+
+		void skip_to(Interpreter::Context &c, Statement* ast_node) override;
+
+
 		/**
 		 * The variable being assigned to.
 		 */
@@ -649,7 +705,7 @@ namespace AST
 		 * The expressions that will be evaluated to give the arguments to the
 		 * called function.
 		 */
-		ASTList<Expression> arguments;
+			ASTList<Expression> arguments;
 	};
 	/**
 	 * A call expression.  This either invokes a closure or a method.
@@ -657,7 +713,7 @@ namespace AST
 	struct Call : public Expression
 	{
 		
-		MysoreScript::CompiledMethod cachedMethod; // cached function pointer for this call site
+		MysoreScript::CompiledMethod *cachedMethod; // cached function pointer for this call site
 	    MysoreScript::Class *cachedClass; // class the object isa type of
 		/**
 		 * The callee, if this is calling a closure, or the object that is
@@ -672,7 +728,18 @@ namespace AST
 		 * The arguments to this call.
 		 */
 		ASTPtr<ArgList> arguments;
+
+
+		Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override;
+		
 		protected:
+
+
+		Obj do_call(Interpreter::Context &c, Obj obj); // refactored
+
+
+
+
 		/**
 		 * Call the relevant method or closure.
 		 */
@@ -699,6 +766,11 @@ namespace AST
 	 */
 	struct Decl : Statement
 	{
+
+		void skip_to(Interpreter::Context &c, Statement* ast_node) override;
+
+
+
 		/**
 		 * The name of the variable.
 		 */
@@ -729,6 +801,9 @@ namespace AST
 	 */
 	struct Return : Statement
 	{
+
+		void skip_to(Interpreter::Context &c, Statement* ast_node) override;
+
 		/**
 		 * The expression that is returned.
 		 */
@@ -756,6 +831,10 @@ namespace AST
 	 */
 	struct IfStatement : Statement
 	{
+	
+		void skip_to(Interpreter::Context &c, Statement* ast_node) override;
+
+
 		/**
 		 * The condition.  This is interpreted as true if it is either a
 		 * non-zero integer or a non-null object.
@@ -789,6 +868,9 @@ namespace AST
 	 */
 	class WhileLoop : public Statement
 	{
+	
+		void skip_to(Interpreter::Context &c, Statement* ast_node) override;
+
 		/**
 		 * The condition.  This is interpreted as true if it is either a
 		 * non-zero integer or a non-null object.
@@ -822,6 +904,12 @@ namespace AST
 	 */
 	struct ClassDecl : Statement
 	{
+
+		// dummy implementation
+		void skip_to(Interpreter::Context &c, Statement* ast_node) override {
+			return;
+		}
+
 		/**
 		 * The name of the class.  AST construction happens depth-first, so this
 		 * is optional even though it is really the superclass name that is
@@ -862,6 +950,15 @@ namespace AST
 	 */
 	class NewExpr : public Expression
 	{
+		
+		Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
+			if (this == ast_node) {
+				std::cerr << "HELP NewExpr matches ast node??" << std::endl;
+				c.astNodeFound = true;
+			}
+			return evaluateExpr(c);
+		}
+
 		/**
 		 * The name of the class being instantiated.
 		 */

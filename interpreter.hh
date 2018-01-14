@@ -10,7 +10,7 @@ namespace Interpreter
 
 
 	// pass through function
-	void reconstructInterpreterPassthrough(uint64_t *bp, uint64_t *sps, uint64_t *sp);
+	void *reconstructInterpreterPassthrough(uint64_t *bp, uint64_t *sps, uint64_t *sp);
 
 
 	/**
@@ -136,6 +136,13 @@ namespace Interpreter
 		 * Are we currently returning?
 		 */
 		bool isReturning = false;
+
+		/*
+		 * used to check if we've found the AST node we're looking for during side exit into interpreter
+		 */
+		bool astNodeFound = false;
+
+
 		/**
 		 * Push a new symbol table on top of the stack.
 		 */

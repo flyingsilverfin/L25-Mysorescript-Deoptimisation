@@ -955,12 +955,13 @@ Class *getClassFor(Obj obj)
 	return cls;
 }
 
-CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
+
+CompiledMethod *ptrToCompiledMethodForSelector(Obj obj, Selector sel)
 {
 //printf("Called compiledMethodForSelector!\n");
 	Class *cls = getClassFor(obj);
 	if (cls == nullptr){
-		return reinterpret_cast<CompiledMethod>(invalidMethod);
+		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
 	}
 	//Class *cls = isInteger(obj) ? &SmallIntClass : obj->isa;
 	Method *mth = methodForSelector(cls, sel);
@@ -968,11 +969,15 @@ CompiledMethod compiledMethodForSelector(Obj obj, Selector sel)
 	// otherwise return the function that we've just looked up.
 	if (!mth)
 	{
-		return reinterpret_cast<CompiledMethod>(invalidMethod);
+		return reinterpret_cast<CompiledMethod*>(&invalidMethod);
 	}
-	return mth->function;
-}
+	return &(mth->function);
 }
 
+CompiledMethod compiledMethodForSelector(Obj obj, Selector sel) {
+	return *ptrToCompiledMethodForSelector(obj, sel);
+}
+
+}
 }  // namespace MysoreScript
 
