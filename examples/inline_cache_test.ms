@@ -143,9 +143,8 @@ class A
 
 /* if allowed, this will get JIT'ed so it's called many times, and therefore implementing inline caching */
 func getter(a) {
-	var b = 10;
 	var c = a.get_val();
-	return b + c;
+	return c;
 };
 
 var aclass = new A.init();
@@ -154,8 +153,8 @@ var s = 0;
 var v = 0;
 while ( i < 100 ) {
 	v = getter(aclass); /* need SSA-like forms for now */
+	v.dump();
 	s = s + v;
-	s.dump();
 	i.dump();
 	i = i + 1;
 }

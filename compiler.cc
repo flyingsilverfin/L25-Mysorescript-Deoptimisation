@@ -205,8 +205,8 @@ ClosureInvoke Compiler::Context::compile()
 	ExecutionEngine *EE = EB.setEngineKind(EngineKind::JIT)
 		.setErrorStr(&err)
 //		.setMCJITMemoryManager(std::move(mm_ptr))
-		//.create(tm);
-		.create();
+		.create(tm);
+		//.create();
 
 	EE->RegisterJITEventListener(new StackmapJITEventListener());
 	if (!EE)
@@ -773,8 +773,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 	
 	// ---patchpoint not stackmap---
 	// function to call
-	// just pass an uint32_t for now for testing!
-	Constant *func = c.M->getOrInsertFunction("x86_trampoline", Type::getVoidTy(c.C), Type::getInt64Ty(c.C));
+	Constant *func = c.M->getOrInsertFunction("x86_trampoline", c.ObjPtrTy);
 	Value *func_i8ptr = c.B.CreateBitCast(func, Type::getInt8PtrTy(c.C));
 	stackmap_args.push_back(func_i8ptr); // needs an i8*... not sure what getOrInsert returns
 
@@ -840,9 +839,19 @@ Value *Call::compileExpression(Compiler::Context &c)
 	func_call->setCallingConv(CallingConv::AnyReg);
 	Value *value_from_interpreter = c.B.Insert(func_call);
 
+	// print to check
+	ArrayRef<Type*> aref(c.ObjPtrTy);
+	Value *CalleeF = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, aref, false));
+	std::vector<Value *> ArgsV;
+	Value *result_as_obj = getAsObject(c, value_from_interpreter);
+	ArgsV.push_back(result_as_obj);
+	CallInst *print_call = CallInst::Create(CalleeF, ArgsV);
+	print_call->setCallingConv(CallingConv::C);
+	c.B.Insert(print_call);
+//	c.B.CreateCall(CalleeF, ArgsV, "printCall");
 
-	c.B.CreateRet(getAsObject(c, compileSmallInt(c, (intptr_t)(999))));
-	
+	c.B.CreateRet(result_as_obj);
+//	c.B.CreateRet(value_from_interpreter);	
 	
 
 

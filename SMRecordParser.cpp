@@ -111,9 +111,13 @@ class SMRecordParser {
 			std::cerr << "    Location reg: " << loc.regnum << std::endl;
 			std::cerr << "    Location offset or immediate constant: " << loc.offset << std::endl;
 
-
-
 			records_retrieved++;
+
+			// first record for a returning patchpoing is the register to return into!!
+			if (records_retrieved == 1) {
+				std::cerr << " ***** Must put pathcpoint return value into: " << std::to_string(loc.regnum) << " (" << dwarf_reg_names[loc.regnum] << ")\n";
+				return loc.regnum;
+			}
 			if (loc.type == 1) {	// register value
 				auto regnum = loc.regnum;
 				auto offset = dwarf_reg_offset[regnum];

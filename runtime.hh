@@ -7,7 +7,7 @@
 #include "StackMapParser.hh"
 #include <unordered_map>
 
-extern "C" void* x86_trampoline();
+extern "C" intptr_t x86_trampoline();
 
 
 static_assert(sizeof(void*) == 8,
@@ -275,6 +275,7 @@ extern "C"
 
 void reconstructInterpreter(void *sp, void *bs);
 
+int32_t print_msg(uint64_t str); 
 
 /**
  * Instantiate an object.  This returns a new instance of the class with all of

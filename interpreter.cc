@@ -772,8 +772,14 @@ Obj ClosureDecl::interpretMethod(Interpreter::Context &c, Method *mth, Obj self,
 	// If we now have a compiled version, try to execute it.
 	if (compiledClosure)
 	{
-		return callCompiledMethod(reinterpret_cast<CompiledMethod>(compiledClosure),
+		auto v = callCompiledMethod(reinterpret_cast<CompiledMethod>(compiledClosure),
 			self, sel, args, parameters->arguments.size());
+		std::cerr << "Result of compiiled method: " << (void*)v << std::endl;
+
+		register uint64_t rax asm("rax");
+		std::cerr << "Current in rax: " << rax << std::endl;
+
+		return v;
 	}
 	// Create a new symbol table for this method.
 	Interpreter::SymbolTable closureSymbols;
@@ -831,8 +837,13 @@ Obj ClosureDecl::interpretClosure(Interpreter::Context &c, Closure *self,
 	// If we now have a compiled version, call it
 	if (compiledClosure)
 	{
-		return callCompiledClosure(compiledClosure, self, args,
+		auto v = callCompiledClosure(compiledClosure, self, args,
 				parameters->arguments.size());
+		std::cerr << "Value returned from compiled closure: " << (void*)v  << std::endl;
+
+		register uint64_t rax asm("rax");
+		std::cerr << "Current in rax: " << rax << std::endl;
+		return v; 
 	}
 	// Create a new symbol table for this closure
 	Interpreter::SymbolTable closureSymbols;
