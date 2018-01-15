@@ -40,7 +40,21 @@ Obj resumeInInterpreter(Statement* ast_node) {
 	std::cerr << "Context.returnValue: " << (void*)(currentContext->retVal) << std::endl;
 	currentContext->isReturning = false;
 	currentContext->astNodeFound = false;
+
+	// self
+	Obj *self = currentContext.getSymbol("self");
+	// if it's a closure, it's a Closure*
+	// if it's a method, id's an Obj*
+
 	currentContext->popSymbols();
+
+
+	if (currentContext->recompile) {
+		 Class *cls = isInteger(root) ? &SmallIntClass : self->isa;
+
+	}
+
+
 	return currentContext->retVal; // return some integer type
 }
 
@@ -615,6 +629,7 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 		if (type_assumption == 0) {
 			type_assumption = cls_intptr; // default behavior here, might not have any cache beforoe
 		} else if (cls_intptr == alternative_type) {
+			std::cerr << "Recording alternative type information" << std::endl;
 			// do some accounting to check if we've hit the alternative type
 			alternative_type_count++;
 			// if hit alternative type enought times
@@ -812,10 +827,6 @@ Obj ClosureDecl::interpretMethod(Interpreter::Context &c, Method *mth, Obj self,
 		auto v = callCompiledMethod(reinterpret_cast<CompiledMethod>(compiledClosure),
 			self, sel, args, parameters->arguments.size());
 		std::cerr << "Result of compiiled method: " << (void*)v << std::endl;
-
-		register uint64_t rax asm("rax");
-		std::cerr << "Current in rax: " << rax << std::endl;
-
 		return v;
 	}
 	// Create a new symbol table for this method.
@@ -876,10 +887,7 @@ Obj ClosureDecl::interpretClosure(Interpreter::Context &c, Closure *self,
 	{
 		auto v = callCompiledClosure(compiledClosure, self, args,
 				parameters->arguments.size());
-		std::cerr << "Value returned from compiled closure: " << (void*)v  << std::endl;
-
-		register uint64_t rax asm("rax");
-		std::cerr << "Current in rax: " << rax << std::endl;
+		std::cerr << "Result of compiiled method: " << (void*)v << std::endl;
 		return v; 
 	}
 	// Create a new symbol table for this closure

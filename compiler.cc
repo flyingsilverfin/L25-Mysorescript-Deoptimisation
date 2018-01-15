@@ -665,7 +665,13 @@ BasicBlock* if_same_else = BasicBlock::Create(c.C, "if_same.else", c.F);
 c.B.CreateCondBr(same, if_same_then, if_same_else);
 // /* DEBUG */ if_not_null_obj_cont->dump();
 
+
+// FAST PATH
 c.B.SetInsertPoint(if_same_then);
+// reset alternative type count
+Value* alt_type_count_addr = staticAddress(c, &alternative_type_count, c.ObjPtrTy->getPointerTo());
+c.B.CreateStore(getAsObject(c, ConstantInt::get(c.ObjIntTy, 0)), alt_type_count_addr);
+
 // If we are invoking a method, then we must first look up the method, then call it.
 FunctionType *methodType = c.getMethodType(0, args.size() - 2);
 Value* prev_cm_addr = staticAddress(c, &cachedMethod, methodType->getPointerTo()->getPointerTo()->getPointerTo());
@@ -693,6 +699,7 @@ c.B.CreateBr(if_same_end);
 
 /* --------------- SLOW PATH BB --------------- */
 c.B.SetInsertPoint(if_same_end);
+// no type accounting to do here since it's all done in resume interpreter!
 
 //-------patchpoints/stackmaps!-------
 
