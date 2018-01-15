@@ -143,9 +143,8 @@ class A
 
 /* if allowed, this will get JIT'ed so it's called many times, and therefore implementing inline caching */
 func getter(a) {
-	var b = 10;
 	var c = a.get_val();
-	return c + b;
+	return c;
 };
 
 var aclass = new A.init();

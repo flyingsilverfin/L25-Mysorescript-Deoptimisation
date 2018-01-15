@@ -3,6 +3,8 @@
 #include "parser.hh"
 #include "SMRecordParser.cpp"
 
+#define RECOMPILE_THRESHOLD 10	// number of times we need to hit a different type assumption to force a recompile
+
 using namespace AST;
 using namespace MysoreScript;
 
@@ -37,6 +39,7 @@ Obj resumeInInterpreter(Statement* ast_node) {
 	std::cerr << "Context.isReturning: " << std::to_string(currentContext->isReturning) << std::endl;
 	std::cerr << "Context.returnValue: " << (void*)(currentContext->retVal) << std::endl;
 	currentContext->isReturning = false;
+	currentContext->astNodeFound = false;
 	currentContext->popSymbols();
 	return currentContext->retVal; // return some integer type
 }
@@ -511,6 +514,7 @@ void Statements::skip_to(Interpreter::Context &c, Statement* ast_node) {
 			msg("***Found AST node within Statements loop***");
 			s->interpret(c);
 		} else {
+			msg("***Running skip_to in Statements loop***");
 			s->skip_to(c, ast_node);
 		}
 	}
@@ -601,6 +605,38 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 		}
 	}
 
+	intptr_t cls_intptr = reinterpret_cast<intptr_t>(cls);
+	if (cls_intptr == type_assumption) {
+		alternative_type_count = 0; //reset alternative counter
+		if (cachedMethod) {
+			return callCompiledMethod(*cachedMethod, obj, sel, args, arguments->arguments.size());
+		}
+	} else {
+		if (type_assumption == 0) {
+			type_assumption = cls_intptr; // default behavior here, might not have any cache beforoe
+		} else if (cls_intptr == alternative_type) {
+			// do some accounting to check if we've hit the alternative type
+			alternative_type_count++;
+			// if hit alternative type enought times
+			if (alternative_type_count > RECOMPILE_THRESHOLD) {
+				type_assumption = alternative_type;
+				alternative_type = 0;
+				alternative_type_count = 0;
+				// TODO do recompile
+				c.recompile = true;
+			}
+		} else {
+			// replace atlernative type we're tracking with the new one
+			alternative_type = cls_intptr;
+			alternative_type_count = 1;
+		}
+	}
+
+	CompiledMethod *mth = ptrToCompiledMethodForSelector(obj, sel);
+	assert(mth && *mth);
+	cachedMethod = mth;
+	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
+/*
 	// inline caching
 	CompiledMethod *mth;
 	if (cls == cachedClass && cachedMethod != nullptr) {
@@ -611,9 +647,10 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 		cachedClass = cls;
 	}
 	assert( mth && *mth);
-	
+
 	// Call the method.
 	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
+*/
 }
 
 Obj Call::expr_skip_to(Interpreter::Context &c, Statement* ast_node) { 
@@ -883,8 +920,8 @@ Obj ClosureDecl::interpretClosure(Interpreter::Context &c, Closure *self,
 	return retVal;
 }
 
-// StringLiteral shouldn't need a specialized skip_to method...
-// Obj StringLiteral::skip_to(Interpreter::Context &c, Statement* ast_node) ;
+// StringLiteral shouldn't ever be the ast_node
+// implemented in ast.hh directly
 
 Obj StringLiteral::evaluateExpr(Interpreter::Context &c)
 {
@@ -909,6 +946,12 @@ void IfStatement::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj cond = condition->expr_skip_to(c, ast_node);
 	if (c.astNodeFound && ((reinterpret_cast<intptr_t>(cond)) & ~7)) {
 		body->interpret(c);
+		return;
+	}
+	if (this == ast_node) {
+		std::cerr << "HELP! IFStatement is the AST Node to resume at... ??" << std::endl;
+		c.astNodeFound = true;
+		body->interpret(c); // execute remainder?
 		return;
 	}
 
@@ -939,10 +982,21 @@ void WhileLoop::skip_to(Interpreter::Context &c, Statement* ast_node) {
 //	if (!c.isReturning) {
 //
 	Obj cond = condition->expr_skip_to(c, ast_node);
-	if (c.astNodeFound && (reinterpret_cast<intptr_t>(condition->evaluate(c))) & ~7) {
-		body->interpret(c);
+	if (c.astNodeFound) {
+		std::cerr << "WhileLoop: found AST NODE in CONDITION!" << std::endl;
+	}
+	// interpret body if condition was true and ast_node found within
+	if (c.astNodeFound && (reinterpret_cast<intptr_t>(cond)) & ~7) {
+		body->interpret(c); //interpret body once
 		// now we can just resume the loop in the usual interpret()
-		interpret(c);
+		interpret(c); // IE. WhileLoop::interpret, will check condition again etc.
+		return;
+	}
+
+	if (this == ast_node) {
+		std::cerr << "HELP! WhileLoop is ast_node to resume at...?" << std::endl;
+		c.astNodeFound = true;
+		interpret(c); // ???
 		return;
 	}
 
@@ -953,6 +1007,7 @@ void WhileLoop::skip_to(Interpreter::Context &c, Statement* ast_node) {
 		interpret(c);
 	}
 	// otherwise keep tree searching
+	
 }
 
 void WhileLoop::interpret(Interpreter::Context &c)
@@ -965,6 +1020,13 @@ void WhileLoop::interpret(Interpreter::Context &c)
 
 void Decl::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj v = nullptr;
+	if (this == ast_node) {
+		std::cerr << "HELP! Decl is ast_node to resume at, not handled" << std::endl;
+		c.astNodeFound = true;
+		// not quite sure what this means, shouldn't be possible to resume in the decl itself
+		// might be possible in the `init` expr, handled below
+		return; 
+	}
 	if (init) {
 		v = init->expr_skip_to(c, ast_node);
 		if (c.astNodeFound) { //ie. the node to resume at is below this node in the AST
@@ -990,6 +1052,12 @@ void Assignment::skip_to(Interpreter::Context &c, Statement* ast_node)  {
 	Obj result = expr->expr_skip_to(c, ast_node);
 	if (c.astNodeFound) {
 		c.setSymbol(target->name, result);
+	}
+	if (this == ast_node) {
+		std::cerr << "HELP! Assignment is node to resume at itself?" << std::endl;
+		c.astNodeFound = true;
+		c.setSymbol(target->name, result); // do we actually execute this?
+		return;
 	}
 }
 
@@ -1025,12 +1093,14 @@ Obj BinOpBase::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj LHS = lhs->expr_skip_to(c, ast_node);
 	// LHS contains node we're looking for, interpret RHS and OP
 	if (c.astNodeFound) {
+		std::cerr << "Found ast node in LHS of BinOp!" << std::endl;
 		Obj RHS = rhs->evaluate(c);
 		return performOp(c, LHS, RHS);
 	}
 
 	Obj RHS = rhs->expr_skip_to(c, ast_node);
 	if (c.astNodeFound) {
+		std::cerr << "Found ast node in RHS of BinOp UNHANDLED (get value from compiler)" << std::endl;
 		// TODO get the LHS from the compiled execution of lhs
 		Obj LHS_compiled_val = nullptr;
 		return performOp(c, LHS_compiled_val, RHS);
@@ -1057,6 +1127,7 @@ Obj BinOpBase::evaluateExpr(Interpreter::Context &c)
 void Return::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj ret_val = expr->expr_skip_to(c, ast_node);
 	if (c.astNodeFound) {
+		std::cerr << "Found ast_node in RHS of Return!" << std::endl;
 		c.retVal = ret_val;
 		c.isReturning = true;
 		return;

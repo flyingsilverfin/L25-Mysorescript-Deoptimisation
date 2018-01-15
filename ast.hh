@@ -30,7 +30,11 @@ namespace AST
 	 */
 	struct Statement : pegmatite::ASTContainer
 	{
-		
+		// only used by a couple subclasses	
+		intptr_t type_assumption = 0; 
+		intptr_t alternative_type = 0;
+		uint64_t alternative_type_count = 0;
+	
 		virtual void skip_to(Interpreter::Context &c, Statement* ast_node) = 0;
 
 		 /* Execute this statement in the interpreter. */
@@ -516,8 +520,10 @@ namespace AST
 		// need to find sub-expression which represents node we stopped executing at before
 		Obj expr_skip_to(Interpreter::Context &c, Statement *ast_node) override; 
 
-
-		clock_t time_spent_in_compiled_method;
+		
+		// ast_node has a member which is pointer called 'jit_type_assumption'
+		// mapped to an alternative type, and a counter
+//		std::unordered_map<Statement* ast_node, std::pair<intptr_t, uint64_t>> type_assumptions;
 
 		/**
 		 * The bound variables - variables that are declared outside of this
@@ -714,7 +720,10 @@ namespace AST
 	{
 		
 		MysoreScript::CompiledMethod *cachedMethod; // cached function pointer for this call site
-	    MysoreScript::Class *cachedClass; // class the object isa type of
+		// essentially the type check, moved up to superclass
+//	    MysoreScript::Class *cachedClass; // class the object isa type of 
+
+
 		/**
 		 * The callee, if this is calling a closure, or the object that is
 		 * having a method invoked on it if it is a method invocation.

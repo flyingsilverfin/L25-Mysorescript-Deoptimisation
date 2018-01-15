@@ -205,8 +205,8 @@ ClosureInvoke Compiler::Context::compile()
 	ExecutionEngine *EE = EB.setEngineKind(EngineKind::JIT)
 		.setErrorStr(&err)
 //		.setMCJITMemoryManager(std::move(mm_ptr))
-		.create(tm);
-		//.create();
+	//	.create(tm);
+		.create();
 
 	EE->RegisterJITEventListener(new StackmapJITEventListener());
 	if (!EE)
@@ -609,6 +609,244 @@ Value *Call::compileExpression(Compiler::Context &c)
 		return invoke_call;
 	}
 
+llvm::errs() << "running inline cache optimisation\n";
+
+// utilize dhruv's inline caching code here since it's cleaner 
+// (does the same thing though)
+	
+BasicBlock* entry = c.B.GetInsertBlock();
+Value* not_null_obj /* i1 */ = c.B.CreateIsNotNull(obj, "not_null_obj");
+BasicBlock* if_not_null_obj_body = BasicBlock::Create(c.C, "if_not_null_obj.body", c.F);
+BasicBlock* if_not_null_obj_cont = BasicBlock::Create(c.C, "if_not_null_obj.cont", c.F);
+c.B.CreateCondBr(not_null_obj, if_not_null_obj_body, if_not_null_obj_cont);
+
+c.B.SetInsertPoint(if_not_null_obj_body);
+Value* int_obj /* i64 */ = getAsSmallInt(c, obj);
+Value* tmp /* i64 */ = c.B.CreateAnd(int_obj, ConstantInt::get(c.ObjIntTy, ~7), "tmp");
+Value* is_int_obj /* i1 */ = c.B.CreateIsNotNull(tmp, "is_int_obj");
+BasicBlock* if_is_int_obj_then = BasicBlock::Create(c.C, "if_is_int_obj.then", c.F);
+BasicBlock* if_is_int_obj_else = BasicBlock::Create(c.C, "if_is_int_obj.else", c.F);
+c.B.CreateCondBr(is_int_obj, if_is_int_obj_then, if_is_int_obj_else);
+ /* DEBUG */ // if_not_null_obj_body->dump();
+
+c.B.SetInsertPoint(if_is_int_obj_then);
+/* Ask about this  */
+Value* cls_1 /* i8* */ = staticAddress(c, &SmallIntClass, c.ObjPtrTy);
+BasicBlock* if_is_int_obj_end /* i1 */ = BasicBlock::Create(c.C, "if_is_int_obj.end", c.F);
+c.B.CreateBr(if_is_int_obj_end);
+
+c.B.SetInsertPoint(if_is_int_obj_else);
+/* And about these two */
+Value* cls_addr /* i8* */ = c.B.CreateConstGEP1_64(obj, offsetof(Object, isa), "cls_addr");
+cls_addr /* i8** */ = c.B.CreateBitCast(cls_addr, cls_addr->getType()->getPointerTo(), "cls_addr_cast");
+Value* cls_2 /* i8* */ = c.B.CreateLoad(cls_addr, "cls_2");
+c.B.CreateBr(if_is_int_obj_end);
+// /* DEBUG */ if_is_int_obj_else->dump();
+
+
+c.B.SetInsertPoint(if_is_int_obj_end);
+/* And this */
+PHINode* cls_assigned /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls_assigned");
+cls_assigned->addIncoming(cls_1, if_is_int_obj_then);
+cls_assigned->addIncoming(cls_2, if_is_int_obj_else);
+c.B.CreateBr(if_not_null_obj_cont);
+/* DEBUG */ if_is_int_obj_end->dump();
+
+c.B.SetInsertPoint(if_not_null_obj_cont);
+/* Forgot about this one first time around */
+PHINode* cls /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls");
+cls->addIncoming(ConstantPointerNull::get(c.ObjPtrTy), entry);
+cls->addIncoming(cls_assigned, if_is_int_obj_end);
+Value* prev_cls_addr /* i8** */ = staticAddress(c, &type_assumption, c.ObjPtrTy->getPointerTo());
+Value* prev_cls_val /* i8* */ = c.B.CreateLoad(prev_cls_addr, "prev_cls_val");
+Value* same /* i1 */ = c.B.CreateICmpEQ(prev_cls_val, cls, "same");
+BasicBlock* if_same_then = BasicBlock::Create(c.C, "if_same.then", c.F);
+BasicBlock* if_same_else = BasicBlock::Create(c.C, "if_same.else", c.F);
+c.B.CreateCondBr(same, if_same_then, if_same_else);
+// /* DEBUG */ if_not_null_obj_cont->dump();
+
+c.B.SetInsertPoint(if_same_then);
+// If we are invoking a method, then we must first look up the method, then call it.
+FunctionType *methodType = c.getMethodType(0, args.size() - 2);
+Value* prev_cm_addr = staticAddress(c, &cachedMethod, methodType->getPointerTo()->getPointerTo()->getPointerTo());
+Value* prev_cm_val /* (A -> B)** */ = c.B.CreateLoad(prev_cm_addr, "prev_cm_val");
+Value* valid_prev_cm /* i1 */ = c.B.CreateIsNotNull(prev_cm_val, "valid_prev_cm");
+BasicBlock* if_valid_prev_cm_body = BasicBlock::Create(c.C, "if_valid_prev_cm.body", c.F);
+BasicBlock* if_same_end = BasicBlock::Create(c.C, "if_same.end", c.F);
+c.B.CreateCondBr(valid_prev_cm, if_valid_prev_cm_body, if_same_end);
+// /* DEBUG */ if_same_then->dump();
+
+c.B.SetInsertPoint(if_valid_prev_cm_body);
+Value* cm /* (A -> B)* */ = c.B.CreateLoad(prev_cm_val, "cm");
+Value* res1 /* B */ = c.B.CreateCall(cm, args, "res1_call_cached_method");
+BasicBlock* ans = BasicBlock::Create(c.C, "ans", c.F);
+c.B.CreateBr(ans);
+// /* DEBUG */ if_valid_prev_cm_body->dump();
+
+c.B.SetInsertPoint(if_same_else);
+c.B.CreateStore(cls /* i8* */, prev_cls_addr /* i8** */);
+c.B.CreateBr(if_same_end);
+// /* DEBUG */ if_same_else->dump();
+
+
+
+
+/* --------------- SLOW PATH BB --------------- */
+c.B.SetInsertPoint(if_same_end);
+
+//-------patchpoints/stackmaps!-------
+
+	std::vector<Type *> arg_types;
+	std::vector<Value *> stackmap_args;
+	
+	// insert return type first?
+//	arg_types.push_back(Type::getVoidTy(c.C));	
+
+
+	// stackmap ID
+	// ask runtime for next stackmap ID
+	uint64_t stackmap_id = get_next_stackmap_id();
+	Value *id = ConstantInt::get(c.ObjIntTy, stackmap_id); 
+	Type *id_type = id->getType();
+	arg_types.push_back(id_type);
+	stackmap_args.push_back(id);
+
+	// reverved bytes - not doing code patching so 0 bytes
+	// apparently need to reserve some space for the call instruction
+	// 15 is least that works
+	
+	Value *reserved_bytes = ConstantInt::get(Type::getInt32Ty(c.C), 15);
+	Type *bytes_type = reserved_bytes->getType();
+	arg_types.push_back(bytes_type);
+	stackmap_args.push_back(reserved_bytes);
+
+	// create call to stackmap intrinsic
+
+//	// don't actually need to pass types to intrisic declaration!
+//	// https://stackoverflow.com/questions/27569967/adding-intrinsics-using-an-llvm-pass
+	
+	// ---patchpoint not stackmap---
+	// function to call
+	Constant *func = c.M->getOrInsertFunction("x86_trampoline", c.ObjPtrTy);
+	Value *func_i8ptr = c.B.CreateBitCast(func, Type::getInt8PtrTy(c.C));
+	stackmap_args.push_back(func_i8ptr); // needs an i8*... not sure what getOrInsert returns
+
+	// need to insert the number of arguments to the function
+	uint32_t num_args = 2; // AST node to resume at, self, and //cmd
+	num_args += currentlyCompiling->parameters->arguments.size();
+	num_args += currentlyCompiling->decls.size(); // local vars
+	num_args += currentlyCompiling->boundVars.size(); // bound vars
+	std::cerr << "Number of locals + bound vars: " << num_args - 2 << std::endl;
+	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), num_args)); 
+
+	
+	// --- arguments for the anyregcc call ---
+	// idea: insert, in order:
+	// 1. pointer to AST node to resume at
+	// 3. values of all parameters
+	// 2. values of all local decls (using standard iterator)
+	// 3. values of all bound vars (using standard iterator)
+
+
+	std::cerr << "'this' ptr to Call that we exited at: " << (void*) this << std::endl;
+
+	// AST Node to resume at
+	stackmap_args.push_back(staticAddress(c, this, c.ObjPtrTy));
+
+	// self and cmd pointers
+//	stackmap_args.push_back(c.B.CreateLoad(c.symbols["self"]));
+	stackmap_args.push_back(c.symbols["self"]);
+//	stackmap_args.push_back(c.B.CreateLoad(c.symbols["cmd"]));
+//	stackmap_args.push_back(c.symbols["cmd"]);
+	// params
+	for (auto &param : currentlyCompiling->parameters->arguments) {
+//		stackmap_args.push_back(c.B.CreateLoad(c.symbols[*param.get()]));
+		stackmap_args.push_back(c.symbols[*param.get()]);
+	}
+
+
+	// decls
+	// rely on deterministic hashing...
+	for (auto &local : currentlyCompiling->decls) {
+		std::cerr << "Saving local c.symbols[" << local << "] = " << c.symbols[local] << std::endl;
+//		stackmap_args.push_back(staticAddress(c, c.symbols[local], c.ObjPtrTy->getPointerTo()));
+//		stackmap_args.push_back(c.B.CreateLoad(c.symbols[local]));
+		stackmap_args.push_back(c.symbols[local]);
+	}
+
+	// bound vars
+	if (!currentlyCompiling->boundVars.empty()) {
+		for (auto &bound : currentlyCompiling->boundVars) {
+//			stackmap_args.push_back(staticAddress(c, c.symbols[bound], c.ObjPtrTy->getPointerTo()));
+//			stackmap_args.push_back(c.B.CreateLoad(c.symbols[bound]));			
+			stackmap_args.push_back(c.symbols[bound]);
+	
+		}
+	}
+
+
+	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_patchpoint_i64);
+	CallInst *func_call = CallInst::Create(fun, stackmap_args);
+	func_call->setCallingConv(CallingConv::AnyReg);
+	Value *value_from_interpreter = c.B.Insert(func_call);
+
+	// print to check
+	ArrayRef<Type*> aref(c.ObjPtrTy);
+	Value *CalleeF = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, aref, false));
+	std::vector<Value *> ArgsV;
+	Value *result_as_obj = getAsObject(c, value_from_interpreter);
+	ArgsV.push_back(result_as_obj);
+	CallInst *print_call = CallInst::Create(CalleeF, ArgsV);
+	print_call->setCallingConv(CallingConv::C);
+	c.B.Insert(print_call);
+
+	c.B.CreateRet(result_as_obj);
+
+/*
+ 
+methodType->getReturnType();
+Constant *lookupFn =
+	c.M->getOrInsertFunction(
+	"ptrToCompiledMethodForSelector",
+	methodType->getPointerTo()->getPointerTo(),
+	obj->getType(),
+	c.SelTy
+);
+
+
+// Insert the call to the function that performs the lookup.  This will
+// always return *something* that we can call, even if it's just a function
+// that reports an error.
+
+Value* methodFn  = c.B.CreateCall(lookupFn, {obj, args[1]}, "methodFn");
+c.B.CreateStore(methodFn , prev_cm_addr);
+// Call the method
+
+Value* deref_methodFn = c.B.CreateLoad(methodFn);
+Value* res2  = c.B.CreateCall(deref_methodFn, args, "res2_call_method");
+c.B.CreateBr(ans);
+// if_same_end->dump();
+*/
+
+c.B.SetInsertPoint(ans);
+PHINode* result /* B */ = c.B.CreatePHI(c.ObjPtrTy, 1, "cls");
+result->addIncoming(res1 /* B */, if_valid_prev_cm_body);
+// result->addIncoming(res2 /* B */, if_same_end);
+// /* DEBUG */ ans->dump();
+
+
+// need to reset the currently executing function ptr in the runtime	
+Value *currently_executing_ptr = staticAddress(c, &MysoreScript::cur_jit_function, c.ObjPtrTy->getPointerTo(), "Runtime ptr cur jit func");
+Value *this_addr = staticAddress(c, currentlyCompiling, c.ObjPtrTy, "this ClosureDecl");
+Value *s = c.B.CreateStore(this_addr, currently_executing_ptr);
+
+return result;
+
+
+/*
+ * My old code follows, reference
+ *
+ *
 // create a branch here mirroring interpreter check
 //  ie. create a static pointer to function pointer cachedMethod
 //  create static pointer to cached Selector
@@ -759,16 +997,16 @@ Value *Call::compileExpression(Compiler::Context &c)
 	Type *bytes_type = reserved_bytes->getType();
 	arg_types.push_back(bytes_type);
 	stackmap_args.push_back(reserved_bytes);
-/*
+
 	// create call to stackmap intrinsic
 
-	ArrayRef<Type*> args_aref(arg_types.data(), arg_types.size());
+//	ArrayRef<Type*> args_aref(arg_types.data(), arg_types.size());
 
-	// don't actually need to pass types to intrisic declaration!
-	// https://stackoverflow.com/questions/27569967/adding-intrinsics-using-an-llvm-pass
-	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_stackmap);//, args_aref);
-	c.B.CreateCall(fun, stackmap_args);
-*/
+//	// don't actually need to pass types to intrisic declaration!
+//	// https://stackoverflow.com/questions/27569967/adding-intrinsics-using-an-llvm-pass
+//	Function *fun = Intrinsic::getDeclaration(c.M.get(), Intrinsic::experimental_stackmap);//, args_aref);
+//	c.B.CreateCall(fun, stackmap_args);
+
 
 	
 	// ---patchpoint not stackmap---
@@ -855,14 +1093,12 @@ Value *Call::compileExpression(Compiler::Context &c)
 	
 
 
-/*
-
-	Constant *lookupFn = c.M->getOrInsertFunction("compiledMethodForSelector",
-			methodType->getPointerTo(), obj->getType(), c.SelTy);
+//	Constant *lookupFn = c.M->getOrInsertFunction("compiledMethodForSelector",
+//			methodType->getPointerTo(), obj->getType(), c.SelTy);
 	// Insert the call to the function that performs the lookup.  This will
 	// always return *something* that we can call, even if it's just a function
 	// that reports an error.
-	Value *methodFn = c.B.CreateCall(lookupFn, {obj, args[1]});
+//	Value *methodFn = c.B.CreateCall(lookupFn, {obj, args[1]});
 
 //	methodFn->getType()->print(llvm::errs());
 //	llvm::errs() << '\n';
@@ -871,10 +1107,10 @@ Value *Call::compileExpression(Compiler::Context &c)
 //	llvm::errs() << methodFn->getType() << '\n';
 //	llvm::errs() << ptrToCachedMethod->getType() << '\n';
 
-	c.B.CreateStore(methodFn, ptrToCachedMethod);
-	c.B.CreateStore(phiObjClass, ptrToCachedClass);
-	c.B.CreateBr(rejoinBB);
-*/
+//	c.B.CreateStore(methodFn, ptrToCachedMethod);
+//	c.B.CreateStore(phiObjClass, ptrToCachedClass);
+//	c.B.CreateBr(rejoinBB);
+
 	// rejoin 
 	c.B.SetInsertPoint(rejoinBB);
 	PHINode *rejoined = c.B.CreatePHI(cachedMeth->getType(), 1, "rejoin");
@@ -890,6 +1126,7 @@ Value *Call::compileExpression(Compiler::Context &c)
 
 //	return c.B.CreateCall(rejoined, args, "call_method");
 	return call_method;
+*/
 }
 
 void Statements::compile(Compiler::Context &c)
