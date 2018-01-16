@@ -10,10 +10,10 @@ class A {
 	}
 	func add(a)
 	{
-		// CHECK: 42
+/*		// CHECK: 42
 		self.print();
 		// CHECK: add called 42
-		" add called ".print();
+		" add called ".print();*/
 		a.print();
 	}
 }

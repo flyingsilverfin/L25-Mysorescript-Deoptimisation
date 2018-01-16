@@ -640,6 +640,16 @@ c.B.SetInsertPoint(if_is_int_obj_else);
 Value* cls_addr /* i8* */ = c.B.CreateConstGEP1_64(obj, offsetof(Object, isa), "cls_addr");
 cls_addr /* i8** */ = c.B.CreateBitCast(cls_addr, cls_addr->getType()->getPointerTo(), "cls_addr_cast");
 Value* cls_2 /* i8* */ = c.B.CreateLoad(cls_addr, "cls_2");
+
+	ArrayRef<Type*> tmpref(c.ObjPtrTy);
+	Value *dbgprint = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, tmpref, false));
+	std::vector<Value *> printargs;
+	Value *cls_as_obj = getAsObject(c, cls_addr);
+	printargs.push_back(cls_as_obj);
+	CallInst *print_call_tmp = CallInst::Create(dbgprint, printargs);
+	c.B.Insert(print_call_tmp);
+
+
 c.B.CreateBr(if_is_int_obj_end);
 // /* DEBUG */ if_is_int_obj_else->dump();
 
@@ -739,11 +749,11 @@ c.B.SetInsertPoint(if_same_end);
 	stackmap_args.push_back(func_i8ptr); // needs an i8*... not sure what getOrInsert returns
 
 	// need to insert the number of arguments to the function
-	uint32_t num_args = 2; // AST node to resume at, self, and //cmd
+	uint32_t num_args = 3; // AST node to resume at, self, and cmd
 	num_args += currentlyCompiling->parameters->arguments.size();
 	num_args += currentlyCompiling->decls.size(); // local vars
 	num_args += currentlyCompiling->boundVars.size(); // bound vars
-	std::cerr << "Number of locals + bound vars: " << num_args - 2 << std::endl;
+	std::cerr << "Number of params+ locals + bound vars: " << num_args - 3 << std::endl;
 	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), num_args)); 
 
 	
@@ -761,8 +771,22 @@ c.B.SetInsertPoint(if_same_end);
 	stackmap_args.push_back(staticAddress(c, this, c.ObjPtrTy));
 
 	// self and cmd pointers
+	if (c.symbols["self"]) {
+		std::cerr << "This Closure has a self ptr" << std::endl;
+		stackmap_args.push_back(c.symbols["self"]);
+	} else {
+		std::cerr << "No self ptr, pushing nullptr" << std::endl;
+		stackmap_args.push_back(ConstantPointerNull::get(c.ObjPtrTy));
+	}
+	if (c.symbols["cmd"]) {
+		std::cerr << "This Closure has a CMD/sel ptr" << std::endl;
+		stackmap_args.push_back(c.symbols["cmd"]);
+	} else {
+		std::cerr << "No CMD/sel ptr, pushing nullptr" << std::endl;
+		stackmap_args.push_back(ConstantPointerNull::get(c.ObjPtrTy));
+	}
 //	stackmap_args.push_back(c.B.CreateLoad(c.symbols["self"]));
-	stackmap_args.push_back(c.symbols["self"]);
+//	stackmap_args.push_back(c.symbols["self"]);
 //	stackmap_args.push_back(c.B.CreateLoad(c.symbols["cmd"]));
 //	stackmap_args.push_back(c.symbols["cmd"]);
 	// params

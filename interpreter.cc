@@ -41,20 +41,6 @@ Obj resumeInInterpreter(Statement* ast_node) {
 	currentContext->isReturning = false;
 	currentContext->astNodeFound = false;
 
-	// self
-	Obj *self = currentContext.getSymbol("self");
-	// if it's a closure, it's a Closure*
-	// if it's a method, id's an Obj*
-
-	currentContext->popSymbols();
-
-
-	if (currentContext->recompile) {
-		 Class *cls = isInteger(root) ? &SmallIntClass : self->isa;
-
-	}
-
-
 	return currentContext->retVal; // return some integer type
 }
 
@@ -112,9 +98,33 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 
 	// self and cmd (selector) pointers
 	Obj* self = (Obj*) record_parser.next_value();
-//	Obj* cmd = (Obj*) record_parser.next_value(); // already a uint32 encoded in a ptr
-	symtab["self"] = self;
-//	symtab["cmd"] = cmd;
+	Obj* cmd = (Obj*) record_parser.next_value(); // already a uint32 encoded in a ptr
+	symtab["self"] = self; //may will be null if calling a closure not method
+	symtab["cmd"] = cmd; //may will be null if calling a closure not method
+	
+	bool isMethod = true;
+	if (self == nullptr) {
+		std::cerr << "This closure has non-null self pointer" << std::endl;
+		isMethod = false;
+	}
+	if (cmd == nullptr) {
+		std::cerr << "This closure has a null cmd value" << std::endl;
+		isMethod = false;
+	}
+
+
+	// methods have instance variables too
+	if (isMethod) {
+		Class *cls = getClassFor(*self);
+		// Add the addresses of the ivars in the self object to the symbol table.
+		Obj *ivars = (reinterpret_cast<Obj*>(& ((*self)->isa))) + 1;
+		for (int32_t i = 0 ; i < cls->indexedIVarCount ; i++)
+		{
+			std::cerr << "Setting instance variable: " << cls->indexedIVarNames[i];
+			std::cerr << " to value: " << ivars[i] << std::endl;
+			symtab[cls->indexedIVarNames[i]] =  &ivars[i];
+		}
+	}
 
 	// params
 	for (auto &param : cur_jit_function->parameters->arguments) {
@@ -147,11 +157,45 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 		}
 	}
 
-	// saved them!
+	// push the symbol table with everything we need into the context
 	currentContext->pushSymbols(symtab);
-	//DONE HERE! :D
 
-	return resumeInInterpreter(resume_stmt);
+
+	
+
+	auto retVal = resumeInInterpreter(resume_stmt);
+
+	if (currentContext->recompile) {
+		std::cerr << "Initiating recompilation!" << std::endl;
+		// initiate a recompilation!
+		ClosureDecl *target = cur_jit_function;
+		if (isMethod) {
+			std::cerr << "Recompiling as method" << std::endl;
+			// use "self" and "cmd" to retrieve the method
+			// recompile it
+			// and attach it to the method
+			Class *cls = getClassFor(*self);
+			uint32_t sel = ((intptr_t)*cmd) >> 3; //unpack the integer
+			Method *mth = methodForSelector(cls, sel);
+			// will recompile
+			// new type assumptions should already be set!
+			auto recompiled = target->compileMethod(cls, currentContext->globalSymbols);
+			mth->function = recompiled; 
+			// memory leaking the old function probably? can't `delete` it since need to return to it once more...
+		} else {
+			std::cerr << "Recompiling as closure" << std::endl;
+			// it's a closure, still have to figure this one out...
+			Closure *closure = reinterpret_cast<Closure*>(self);
+			closure->invoke = target->compileClosure(currentContext->globalSymbols);
+			target->compiledClosure = closure->invoke; //set the closure within this class	
+		}
+		currentContext->recompile = false;
+	}
+
+	// reset the context
+	currentContext->popSymbols();
+
+	return retVal;
 	// I'm just going to try to get this working from here!
 
 }
@@ -579,6 +623,8 @@ Obj Expression::evaluate(Interpreter::Context &c)
 
 Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 
+	std::cerr << "In Interpreter do_call" << std::endl;
+
 	// Array of arguments.  
 	Obj args[10];
 	// Get the callee, which is either a closure or some other object that will
@@ -637,7 +683,7 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 				type_assumption = alternative_type;
 				alternative_type = 0;
 				alternative_type_count = 0;
-				// TODO do recompile
+				std::cerr << "Setting recompile flag!" << std::endl;
 				c.recompile = true;
 			}
 		} else {
@@ -668,8 +714,10 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 */
 }
 
-Obj Call::expr_skip_to(Interpreter::Context &c, Statement* ast_node) { 
+Obj Call::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
 	msg("* Call skip_to");
+	msg("Value of Cookie: " );
+	std::cerr << c.lookupSymbol("cookie") << std::endl;;
 	Obj obj = callee->expr_skip_to(c, ast_node);
 	msg("* Call skip_to : expr to call evaluated");
 	if (c.astNodeFound) {
@@ -694,6 +742,8 @@ Obj Call::evaluateExpr(Interpreter::Context &c)
 
 Obj VarRef::evaluateExpr(Interpreter::Context &c)
 {
+
+//	std::cerr << "Looking up name: " << name << std::endl;
 	// Get the address of the variable corresponding to this symbol and then
 	// load the object stored there.
 	Obj *address = c.lookupSymbol(name);
@@ -815,9 +865,11 @@ Obj ClosureDecl::interpretMethod(Interpreter::Context &c, Method *mth, Obj self,
 	check();
 	Class *cls = isInteger(self) ? &SmallIntClass : self->isa;
 	executionCount++;
+	std::cerr << " In Interpret method!" << std::endl;
 	// If we've interpreted this method enough times then try to compile it.
 	if (forceCompiler || (executionCount == compileThreshold))
 	{
+		std::cerr << " Compiling method" << std::endl;
 		mth->function = compileMethod(cls, c.globalSymbols);
 		compiledClosure = reinterpret_cast<ClosureInvoke>(mth->function);
 	}
@@ -873,9 +925,11 @@ Obj ClosureDecl::interpretClosure(Interpreter::Context &c, Closure *self,
 		Obj *args)
 {
 	executionCount++;
+	std::cerr << "Interpret closure!" << std::endl;
 	// If we've interpreted this enough times, compile it.
 	if (forceCompiler || (executionCount == compileThreshold))
 	{
+		std::cerr << "Compiling closure!" << std::endl;
 		// Note that we don't pass any symbols other than the globals into the
 		// compiler, because all of the bound variables are already copied into
 		// the closure object when it is created.

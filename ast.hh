@@ -567,6 +567,20 @@ namespace AST
 		                    Obj self,
 		                    MysoreScript::Selector sel,
 		                    Obj *args);
+		/**
+		 * Compile as if this is a method.
+		 */
+		MysoreScript::CompiledMethod compileMethod(MysoreScript::Class *cls,
+		                                           Interpreter::SymbolTable &globalSymbols);
+		/**
+		 * Compile as if this is a closure.
+		 */
+		MysoreScript::ClosureInvoke compileClosure(Interpreter::SymbolTable &globalSymbols);
+		/**
+		 * If this closure has already been compiled once, then the compiled
+		 * functions is cached.
+		 */
+		MysoreScript::ClosureInvoke compiledClosure = nullptr;
 		protected:
 		/**
 		 * Evaluate this closure, returning the closure object representing it.
@@ -596,11 +610,6 @@ namespace AST
 		 */
 		int executionCount = 0;
 		/**
-		 * If this closure has already been compiled once, then the compiled
-		 * functions is cached.
-		 */
-		MysoreScript::ClosureInvoke compiledClosure = nullptr;
-		/**
 		 * A flag indicating whether we've already worked out what the bound
 		 * variables and locals are in this closure.
 		 */
@@ -610,15 +619,6 @@ namespace AST
 		 * inside this closure.
 		 */
 		void check();
-		/**
-		 * Compile as if this is a method.
-		 */
-		MysoreScript::CompiledMethod compileMethod(MysoreScript::Class *cls,
-		                                           Interpreter::SymbolTable &globalSymbols);
-		/**
-		 * Compile as if this is a closure.
-		 */
-		MysoreScript::ClosureInvoke compileClosure(Interpreter::SymbolTable &globalSymbols);
 		/**
 		 * Collect the name of this closure as a declaration and all of the
 		 * bound variables as uses.

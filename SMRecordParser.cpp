@@ -69,7 +69,7 @@ class SMRecordParser {
 		};
 		// for use
 		// correspond to order in which were pushed onto stack!
-		const uint8_t dwarf_reg_offset[16] = {0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15}; 
+		const uint8_t dwarf_reg_offset[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}; 
 
 
 //		uint64_t getRegister(
@@ -88,13 +88,13 @@ class SMRecordParser {
 			num_locations = *position.u16++;
 
 
-/*			std::cerr << "Register stack: \n";
+			std::cerr << "Register stack: \n";
 			// testing!
 			for (uint64_t i = 0; i < 16; i++) {
 				uint64_t *loc = registers_start - i;
 				std::cerr << "\t64 Bit value at: " << loc << "\tis:\t" << *(loc) << std::endl;
 			}
-*/
+
 		}	
 
 		// retrieves the next value in the stackmap!
@@ -126,9 +126,17 @@ class SMRecordParser {
 				std::cerr << "  Obtained register " << std::to_string(offset) << " (" << dwarf_reg_names[offset] << ")";
 				std::cerr << "  From memory location: " << (void*)(registers_start - offset) << std::endl;
 				return (int64_t)value;
-			} else if (loc.type == 2) {
-				// TODO
-				std::cerr << "Direct stackmap values not implemented!" << std::endl;
+			} else if (loc.type == 2) { // direct stackmap
+				// these are used to store addresses that were requested
+				// no need to deref the address that is computed
+				// format: reg value + offset = desired address
+				auto regnum = loc.regnum;
+				auto offset = dwarf_reg_offset[regnum];
+				auto reg_value = *(registers_start - offset);
+				std::cerr << "Direct stackmap register value (before offset): " << reg_value << std::endl;				
+				auto addr = reg_value + loc.offset;
+				std::cerr << "Direct stackmap values (an address) retrieved: !" << addr << std::endl;
+				return addr;
 			} else if (loc.type == 3) {
 				//TODO
 				std::cerr << "Indirect stackmap values not implemented!" << std::endl;

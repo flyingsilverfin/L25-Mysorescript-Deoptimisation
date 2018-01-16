@@ -760,12 +760,8 @@ Obj callCompiledClosure(ClosureInvoke m, Closure *receiver, Obj *args,
 
 extern "C"
 {
-int32_t print_msg (uint64_t str) {
-	std::cerr << "Printing value: " << std::to_string(str) << std::endl;
-	uint64_t register rbx asm("rbx");
-	std::cerr << "RBX: " << std::to_string(rbx) << std::endl;
-	uint64_t register rdi asm("rdi");
-	std::cerr << "RDI: " << std::to_string(rdi) << std::endl;
+int32_t print_msg (uint64_t v) {
+	std::cerr << "++++Printing message from JIT: " << v << std::endl;
 	return 0;
 }
 

@@ -15,13 +15,17 @@ class Sub : Base
 		c = "c";
 		d = "d";
 		a.dump();
-		b.dump();
-		c.dump();
-		d.dump();
-		"\n".dump();
 	}
 }
 
 var s = new Sub;
 
 s.inherited();
+
+
+/*
+		b.dump();
+		c.dump();
+		d.dump();
+		"\n".dump();
+*/
