@@ -42,11 +42,11 @@ b.init();
 var s = new Sub;
 s.init();
 var x;
-while ( i < 10000 ) {
-	if ( i < 5000) {
+while ( i < 100000 ) {
+	if ( i < 50000) {
 		x = b;
 	}
-	if (i >= 5000){
+	if (i >= 50000){
 		x = s;
 	}
 	runner(x);

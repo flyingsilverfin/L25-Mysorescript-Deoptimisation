@@ -9,7 +9,7 @@
 #define D(x)
 #endif
 
-#define RECOMPILE_THRESHOLD 10	// number of times we need to hit a different type assumption to force a recompile
+#define RECOMPILE_THRESHOLD 10000 	// number of times we need to hit a different type assumption to force a recompile
 
 using namespace AST;
 using namespace MysoreScript;
