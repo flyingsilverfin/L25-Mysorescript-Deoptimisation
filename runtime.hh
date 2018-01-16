@@ -275,7 +275,8 @@ extern "C"
 
 void reconstructInterpreter(void *sp, void *bs);
 
-int32_t print_msg(uint64_t str); 
+int32_t print_msg(void *r); 
+int32_t print_msg_3(void *a, void* b, void* c);
 
 /**
  * Instantiate an object.  This returns a new instance of the class with all of

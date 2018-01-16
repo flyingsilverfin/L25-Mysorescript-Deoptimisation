@@ -7,6 +7,14 @@
 
 #include <iostream>
 
+#define DEBUG 0
+
+#ifdef DEBUG 
+#define D(x) x
+#else 
+#define D(x)
+#endif
+
 namespace Compiler
 {
 	class Context;
@@ -143,7 +151,7 @@ namespace AST
 		
 		Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
 			if (ast_node == this) {
-				std::cerr << "HELP Number matched ast_node??" << std::endl;
+				D(std::cerr << "HELP Number matched ast_node??" << std::endl;)
 				c.astNodeFound = true;
 			}
 			return evaluateExpr(c);
@@ -201,7 +209,7 @@ namespace AST
 
 		Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
 			if (ast_node == this) {
-				std::cerr << "HELP StringLiteral matched ast_node" << std::endl;
+				D(std::cerr << "HELP StringLiteral matched ast_node" << std::endl;)
 				c.astNodeFound = true;
 			}
 			return evaluateExpr(c);
@@ -515,6 +523,8 @@ namespace AST
 	struct ClosureDecl : Expression
 	{
 
+		bool recompile = false;
+
 		// this is the root of any skip_ to call
 		// Context c has already been assembled correctly
 		// need to find sub-expression which represents node we stopped executing at before
@@ -634,7 +644,7 @@ namespace AST
 
 		Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
 			if (this == ast_node) {
-				std::cerr << "HELP VarRef matched ast_node, it shouldn't" << std::endl;
+				D(std::cerr << "HELP VarRef matched ast_node, it shouldn't" << std::endl;)
 				c.astNodeFound = true;
 			}
 			return evaluateExpr(c);
@@ -962,7 +972,7 @@ namespace AST
 		
 		Obj expr_skip_to(Interpreter::Context &c, Statement* ast_node) override {
 			if (this == ast_node) {
-				std::cerr << "HELP NewExpr matches ast node??" << std::endl;
+				D(std::cerr << "HELP NewExpr matches ast node??" << std::endl;)
 				c.astNodeFound = true;
 			}
 			return evaluateExpr(c);

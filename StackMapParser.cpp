@@ -42,7 +42,7 @@ StackMapParser::StackMapParser(uint64_t location)
 
 	//sanity check
 	assert(*base == 3); // version is hardcoded to 3
-
+/*
 	// print out stack for debugging
 	for (uint8_t i = 0; i < 240; i++) {
 		std::cerr << "Byte " << std::to_string(i) << " : " << std::to_string(*(base+i)) << "\tAddress: " << (void*)(base+i) << std::endl;
@@ -51,11 +51,12 @@ StackMapParser::StackMapParser(uint64_t location)
 	std::cerr << "Num Functions: " << getNumFunctions();
 	std::cerr << "  Num Constants: " << getNumConstants();
 	std::cerr << "  Num Records: " << getNumRecords() << std::endl;
+*/
 	// compute base of records
 	records_base = base + StkSizeRecord + getNumFunctions()*SIZE_StkSizeRecord + getNumConstants()*SIZE_CONSTANTS;
 	
-	std::cerr << " Records base: " << (void*)records_base << std::endl;
-	std::cerr << " Number of entries in first record: " << *(((uint16_t*)records_base) + 7) << std::endl;
+//	std::cerr << " Records base: " << (void*)records_base << std::endl;
+//	std::cerr << " Number of entries in first record: " << *(((uint16_t*)records_base) + 7) << std::endl;
 
 //	std::cerr << " 0th record dump: ";// << dump_nth_record(0) << std::endl;
 }
@@ -125,12 +126,12 @@ int8_t *StackMapParser::getRecordWithId(uint64_t id) {
 
 void StackMapParser::dump_nth_record(uint64_t nth) {
 	auto ptr = getNthRecord(nth);
-	std::cout << " Pointer for record: " << (void*)ptr << std::endl;
-	std::cout << "Patchpoint ID: " << *(uint64_t*)(ptr) << std::endl;
+//	std::cout << " Pointer for record: " << (void*)ptr << std::endl;
+//	std::cout << "Patchpoint ID: " << *(uint64_t*)(ptr) << std::endl;
 	ptr += 8;
-	std::cout << "Instruction Offset: " << *(uint32_t*)(ptr) << std::endl;
+//	std::cout << "Instruction Offset: " << *(uint32_t*)(ptr) << std::endl;
 	ptr += 6;
-	std::cout << "NumLocations: " << *(uint16_t*)(ptr) << std::endl;
+//	std::cout << "NumLocations: " << *(uint16_t*)(ptr) << std::endl;
 }
 
 

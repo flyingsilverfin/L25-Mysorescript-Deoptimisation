@@ -17,6 +17,12 @@
 //Liveout array
 #define LIVEOUT_ENTRY_SIZE 4
 
+#define DEBUG 1 
+#ifdef DEBUG 
+#define D(x) x
+#else 
+#define D(x)
+#endif
 struct __attribute__((__packed__)) Location {
 	enum LocationType : uint8_t {
 		Register = 0x1,
@@ -88,34 +94,35 @@ class SMRecordParser {
 			num_locations = *position.u16++;
 
 
-			std::cerr << "Register stack: \n";
+			
+			D(std::cerr << "Register stack:" << std::endl;	
 			// testing!
 			for (uint64_t i = 0; i < 16; i++) {
 				uint64_t *loc = registers_start - i;
 				std::cerr << "\t64 Bit value at: " << loc << "\tis:\t" << *(loc) << std::endl;
-			}
+			})
 
 		}	
 
 		// retrieves the next value in the stackmap!
 		int64_t next_value() {
 			if (records_retrieved >= num_locations) {
-				std::cerr << "Out of records! Have already retrieved: " << records_retrieved << std::endl;
+				D(std::cerr << "Out of records! Have already retrieved: " << records_retrieved << std::endl;)
 				return -1;
 			}
-			std::cerr << "    Retrieving Location entry from: " << (void*)position.u8 << std::endl;
+			D(std::cerr << "    Retrieving Location entry from: " << (void*)position.u8 << std::endl;)
 			const struct Location &loc = *position.record_loc++;	// read in entire location at once
 	
-			std::cerr << "    Location type: " << loc.type << std::endl;
+			D(std::cerr << "    Location type: " << loc.type << std::endl;
 			std::cerr << "    Location size: " << loc.size << std::endl;
 			std::cerr << "    Location reg: " << loc.regnum << std::endl;
-			std::cerr << "    Location offset or immediate constant: " << loc.offset << std::endl;
+			std::cerr << "    Location offset or immediate constant: " << loc.offset << std::endl;)
 
 			records_retrieved++;
 
 			// first record for a returning patchpoing is the register to return into!!
 			if (records_retrieved == 1) {
-				std::cerr << " ***** Must put pathcpoint return value into: " << std::to_string(loc.regnum) << " (" << dwarf_reg_names[loc.regnum] << ")\n";
+				D(std::cerr << " ***** Must put pathcpoint return value into: " << std::to_string(loc.regnum) << " (" << dwarf_reg_names[loc.regnum] << ")\n";)
 				return loc.regnum;
 			}
 			if (loc.type == 1) {	// register value
@@ -123,8 +130,8 @@ class SMRecordParser {
 				auto offset = dwarf_reg_offset[regnum];
 				// grab the register value which was saved to the stack!
 				auto value = *(registers_start - offset);
-				std::cerr << "  Obtained register " << std::to_string(offset) << " (" << dwarf_reg_names[offset] << ")";
-				std::cerr << "  From memory location: " << (void*)(registers_start - offset) << std::endl;
+				D(std::cerr << "  Obtained register " << std::to_string(offset) << " (" << dwarf_reg_names[offset] << ")";
+				std::cerr << "  From memory location: " << (void*)(registers_start - offset) << std::endl;)
 				return (int64_t)value;
 			} else if (loc.type == 2) { // direct stackmap
 				// these are used to store addresses that were requested
@@ -133,17 +140,17 @@ class SMRecordParser {
 				auto regnum = loc.regnum;
 				auto offset = dwarf_reg_offset[regnum];
 				auto reg_value = *(registers_start - offset);
-				std::cerr << "Direct stackmap register value (before offset): " << reg_value << std::endl;				
+				D(std::cerr << "Direct stackmap register value (before offset): " << reg_value << std::endl;)
 				auto addr = reg_value + loc.offset;
-				std::cerr << "Direct stackmap values (an address) retrieved: !" << addr << std::endl;
+				D(std::cerr << "Direct stackmap values (an address) retrieved: !" << addr << std::endl;)
 				return addr;
 			} else if (loc.type == 3) {
 				//TODO
-				std::cerr << "Indirect stackmap values not implemented!" << std::endl;
+				D(std::cerr << "Indirect stackmap values not implemented!" << std::endl;)
 			} else if (loc.type == 4) {	// small constant
 				return loc.offset;
 			} else if (loc.type == 5) { // large constant
-				std::cerr << "This was not thought out correct to access large constants... :(" << std::endl;
+				D(std::cerr << "This was not thought out correct to access large constants... :(" << std::endl;)
 			}
 			return -1;
 

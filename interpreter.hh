@@ -143,10 +143,6 @@ extern "C" {
 		 */
 		bool astNodeFound = false;
 
-		/*
-		 * used to signal a type check has failed often enough we need to recompile
-		 */
-		bool recompile = false;
 
 		/**
 		 * Push a new symbol table on top of the stack.

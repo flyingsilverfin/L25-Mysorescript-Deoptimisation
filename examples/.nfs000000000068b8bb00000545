@@ -40,8 +40,8 @@ var b = new Base;
 b.init();
 var s = new Sub;
 s.init();
-var x;
 while ( i < 30 ) {
+	var x;
 	if ( i < 15) {
 		x = b;
 	}
@@ -52,4 +52,3 @@ while ( i < 30 ) {
 	i = i + 1;
 	i.dump();
 }
-

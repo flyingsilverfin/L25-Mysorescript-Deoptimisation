@@ -13,6 +13,13 @@
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "StackMapParser.cpp"
 
+#define DEBUG 1
+#ifdef DEBUG 
+#define D(x) x
+#else 
+#define D(x)
+#endif
+
 using namespace llvm;
 using llvm::legacy::PassManager;
 using namespace MysoreScript;
@@ -176,7 +183,6 @@ ClosureInvoke Compiler::Context::compile()
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
 	if (Compiler::DEBUG_JIT >= 1) {
-		llvm::errs() << "--- Pre-optimisation IR --- " << '\n';
 		M->dump();
 	}
 
@@ -189,7 +195,7 @@ ClosureInvoke Compiler::Context::compile()
 	// If you want to see the LLVM IR after optimisation, uncomment the
 	// following line:
 	if (Compiler::DEBUG_JIT >= 2)	 {
-		llvm::errs() << " --- Optimized IR --- " << '\n';
+		D(llvm::errs() << " --- Optimized IR --- " << '\n';)
 		M->dump();
 	}
 
@@ -197,6 +203,7 @@ ClosureInvoke Compiler::Context::compile()
 //	std::unique_ptr<RTDyldMemoryManager> mm_ptr(new JITMemoryManager()); 	
 
 	std::string FunctionName = F->getName();
+	D(llvm::errs() << "Compiled function or closure: " << FunctionName << "\n";)
 	std::string err;
 	EngineBuilder EB(std::move(M));
 	TargetMachine * tm = EB.selectTarget();
@@ -609,117 +616,71 @@ Value *Call::compileExpression(Compiler::Context &c)
 		return invoke_call;
 	}
 
-llvm::errs() << "running inline cache optimisation\n";
 
-// utilize dhruv's inline caching code here since it's cleaner 
-// (does the same thing though)
-	
+
+
 BasicBlock* entry = c.B.GetInsertBlock();
+
+
+BasicBlock *cache_hit = BasicBlock::Create(c.C, "cache_hit", c.F);
+BasicBlock *cache_miss = BasicBlock::Create(c.C, "cache_miss", c.F);
+
 Value* not_null_obj /* i1 */ = c.B.CreateIsNotNull(obj, "not_null_obj");
-BasicBlock* if_not_null_obj_body = BasicBlock::Create(c.C, "if_not_null_obj.body", c.F);
-BasicBlock* if_not_null_obj_cont = BasicBlock::Create(c.C, "if_not_null_obj.cont", c.F);
-c.B.CreateCondBr(not_null_obj, if_not_null_obj_body, if_not_null_obj_cont);
+BasicBlock* if_not_null_obj_body = BasicBlock::Create(c.C, "if_not_null", c.F);
+c.B.CreateCondBr(not_null_obj, if_not_null_obj_body, cache_miss);
 
 c.B.SetInsertPoint(if_not_null_obj_body);
-Value* int_obj /* i64 */ = getAsSmallInt(c, obj);
-Value* tmp /* i64 */ = c.B.CreateAnd(int_obj, ConstantInt::get(c.ObjIntTy, ~7), "tmp");
-Value* is_int_obj /* i1 */ = c.B.CreateIsNotNull(tmp, "is_int_obj");
-BasicBlock* if_is_int_obj_then = BasicBlock::Create(c.C, "if_is_int_obj.then", c.F);
-BasicBlock* if_is_int_obj_else = BasicBlock::Create(c.C, "if_is_int_obj.else", c.F);
-c.B.CreateCondBr(is_int_obj, if_is_int_obj_then, if_is_int_obj_else);
- /* DEBUG */ // if_not_null_obj_body->dump();
-
-c.B.SetInsertPoint(if_is_int_obj_then);
-/* Ask about this  */
-Value* cls_1 /* i8* */ = staticAddress(c, &SmallIntClass, c.ObjPtrTy);
-BasicBlock* if_is_int_obj_end /* i1 */ = BasicBlock::Create(c.C, "if_is_int_obj.end", c.F);
-c.B.CreateBr(if_is_int_obj_end);
-
-c.B.SetInsertPoint(if_is_int_obj_else);
-/* And about these two */
-Value* cls_addr /* i8* */ = c.B.CreateConstGEP1_64(obj, offsetof(Object, isa), "cls_addr");
-cls_addr /* i8** */ = c.B.CreateBitCast(cls_addr, cls_addr->getType()->getPointerTo(), "cls_addr_cast");
-Value* cls_2 /* i8* */ = c.B.CreateLoad(cls_addr, "cls_2");
+/*
+	ArrayRef<Type*> tmpref2(c.ObjPtrTy);
+	Value *dbgprint2 = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, tmpref2, false));
+	std::vector<Value *> printargs2;
+	// printargs2.push_back(obj);
+	printargs2.push_back(c.B.CreateIntToPtr(ConstantInt::get(c.ObjIntTy, 2), c.ObjPtrTy));
+//	printargs.push_back(staticAddress(c, (void*)type_assumption, c.ObjPtrTy));
+	CallInst *print_call_tmp2 = CallInst::Create(dbgprint2, printargs2);
+	c.B.Insert(print_call_tmp2);
+*/
+// Value* int_obj /* i64 */ = getAsSmallInt(c, obj);
+//Value* int_obj = c.B.CreatePtrToInt(obj, c.ObjIntTy);
+//Value* tmp /* i64 */ = c.B.CreateAnd(int_obj, ConstantInt::get(c.ObjIntTy, ~7), "tmp");
+//Value* is_int_obj /* i1 */ = c.B.CreateIsNotNull(tmp, "is_int_obj");
 
 
-//	Value *isa = c.B.CreateLoad(obj); // this is the 'isa' ptr ie a pointer to a class
-//	Value *cls_2 = c.B.CreateIntToPtr(isa, c.ObjPtrTy); // convert to right type of pointer
 
-	ArrayRef<Type*> tmpref(c.ObjPtrTy);
-	Value *dbgprint = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, tmpref, false));
-	std::vector<Value *> printargs;
-//	Value *cls_as_obj = getAsObject(c, cls_2);
-	printargs.push_back(staticAddress(c, (void*)type_assumption, c.ObjPtrTy));
-	CallInst *print_call_tmp = CallInst::Create(dbgprint, printargs);
-	c.B.Insert(print_call_tmp);
+if (type_assumption == (intptr_t)&SmallIntClass) {
+	D(std::cerr << " Type assumption: " << (void*) type_assumption << " = SmallIntClass\n";)
+	// confirm object is an int	
+	Value *intConst = ConstantInt::get(Type::getInt64Ty(c.C), 7);
+	Value *objAsInt = c.B.CreatePtrToInt(obj, Type::getInt64Ty(c.C)); 
+	Value *isInt = c.B.CreateAnd(objAsInt, intConst);
 
-
-c.B.CreateBr(if_is_int_obj_end);
-// /* DEBUG */ if_is_int_obj_else->dump();
+	c.B.CreateCondBr(isInt, cache_hit, cache_miss);
 
 
-c.B.SetInsertPoint(if_is_int_obj_end);
-/* And this */
-PHINode* cls_assigned /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls_assigned");
-cls_assigned->addIncoming(cls_1, if_is_int_obj_then);
-cls_assigned->addIncoming(cls_2, if_is_int_obj_else);
-c.B.CreateBr(if_not_null_obj_cont);
-/* DEBUG */ if_is_int_obj_end->dump();
+} else {
+	D(std::cerr << " Type assumption: " << (void*) type_assumption << " != SmallIntClass\n";)
+	Value *expected_cls = staticAddress(c, (void*)type_assumption, c.ObjPtrTy); // just a constant
+	Value* cls_addr /* i8* */ = c.B.CreateConstGEP1_64(obj, offsetof(Object, isa), "cls_addr");
+	cls_addr /* i8** */ = c.B.CreateBitCast(cls_addr, cls_addr->getType()->getPointerTo(), "cls_addr_cast");
+	Value* cls /* i8* */ = c.B.CreateLoad(cls_addr, "cls");
 
-c.B.SetInsertPoint(if_not_null_obj_cont);
-/* Forgot about this one first time around */
-PHINode* cls /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls");
-cls->addIncoming(ConstantPointerNull::get(c.ObjPtrTy), entry);
-cls->addIncoming(cls_assigned, if_is_int_obj_end);
+	Value* same /* i1 */ = c.B.CreateICmpEQ(expected_cls, cls, "same");
+	c.B.CreateCondBr(same, cache_hit, cache_miss);	
 
-// make this into a permanent choice!!
-// Value *prev_cls = staticAddress(c, type_assumption, c.ObjPtrTy); // just a constant
-
-
- Value* prev_cls_addr /* i8** */ = staticAddress(c, &type_assumption, c.ObjPtrTy->getPointerTo());
- Value* prev_cls_val /* i8* */ = c.B.CreateLoad(prev_cls_addr, "prev_cls_val");
-Value* same /* i1 */ = c.B.CreateICmpEQ(prev_cls_val, cls, "same");
-BasicBlock* if_same_then = BasicBlock::Create(c.C, "if_same.then", c.F);
-BasicBlock* if_same_else = BasicBlock::Create(c.C, "if_same.else", c.F);
-c.B.CreateCondBr(same, if_same_then, if_same_else);
-// /* DEBUG */ if_not_null_obj_cont->dump();
-
-
-// FAST PATH
-c.B.SetInsertPoint(if_same_then);
-// reset alternative type count
-Value* alt_type_count_addr = staticAddress(c, &alternative_type_count, c.ObjPtrTy->getPointerTo());
-c.B.CreateStore(getAsObject(c, ConstantInt::get(c.ObjIntTy, 0)), alt_type_count_addr);
-
-// If we are invoking a method, then we must first look up the method, then call it.
-FunctionType *methodType = c.getMethodType(0, args.size() - 2);
-Value* prev_cm_addr = staticAddress(c, &cachedMethod, methodType->getPointerTo()->getPointerTo()->getPointerTo());
-Value* prev_cm_val /* (A -> B)** */ = c.B.CreateLoad(prev_cm_addr, "prev_cm_val");
-Value* valid_prev_cm /* i1 */ = c.B.CreateIsNotNull(prev_cm_val, "valid_prev_cm");
-BasicBlock* if_valid_prev_cm_body = BasicBlock::Create(c.C, "if_valid_prev_cm.body", c.F);
-BasicBlock* if_same_end = BasicBlock::Create(c.C, "if_same.end", c.F);
-c.B.CreateCondBr(valid_prev_cm, if_valid_prev_cm_body, if_same_end);
-// /* DEBUG */ if_same_then->dump();
-
-c.B.SetInsertPoint(if_valid_prev_cm_body);
-Value* cm /* (A -> B)* */ = c.B.CreateLoad(prev_cm_val, "cm");
-Value* res1 /* B */ = c.B.CreateCall(cm, args, "res1_call_cached_method");
-BasicBlock* ans = BasicBlock::Create(c.C, "ans", c.F);
-c.B.CreateBr(ans);
-// /* DEBUG */ if_valid_prev_cm_body->dump();
-
-c.B.SetInsertPoint(if_same_else);
-c.B.CreateStore(cls /* i8* */, prev_cls_addr /* i8** */);
-c.B.CreateBr(if_same_end);
-// /* DEBUG */ if_same_else->dump();
-
-
+}
 
 
 /* --------------- SLOW PATH BB --------------- */
-c.B.SetInsertPoint(if_same_end);
+c.B.SetInsertPoint(cache_miss);
 // no type accounting to do here since it's all done in resume interpreter!
-
+/*
+	ArrayRef<Type*> tmpref6(c.ObjPtrTy);
+	Value *dbgprint6 = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, tmpref6, false));
+	std::vector<Value *> printargs6;
+	printargs6.push_back(c.B.CreateIntToPtr(ConstantInt::get(c.ObjIntTy, 99999), c.ObjPtrTy));
+	CallInst *print_call_tmp6 = CallInst::Create(dbgprint6, printargs6);
+	c.B.Insert(print_call_tmp6);
+*/
 //-------patchpoints/stackmaps!-------
 
 	std::vector<Type *> arg_types;
@@ -762,7 +723,7 @@ c.B.SetInsertPoint(if_same_end);
 	num_args += currentlyCompiling->parameters->arguments.size();
 	num_args += currentlyCompiling->decls.size(); // local vars
 	num_args += currentlyCompiling->boundVars.size(); // bound vars
-	std::cerr << "Number of params+ locals + bound vars: " << num_args - 3 << std::endl;
+	D(std::cerr << "Number of params+ locals + bound vars: " << num_args - 3 << std::endl;)
 	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), num_args)); 
 
 	
@@ -774,24 +735,22 @@ c.B.SetInsertPoint(if_same_end);
 	// 3. values of all bound vars (using standard iterator)
 
 
-	std::cerr << "'this' ptr to Call that we exited at: " << (void*) this << std::endl;
-
 	// AST Node to resume at
 	stackmap_args.push_back(staticAddress(c, this, c.ObjPtrTy));
 
 	// self and cmd pointers
 	if (c.symbols["self"]) {
-		std::cerr << "This Closure has a self ptr" << std::endl;
+		D(std::cerr << "This closure has a self ptr" << std::endl;)	
 		stackmap_args.push_back(c.symbols["self"]);
 	} else {
-		std::cerr << "No self ptr, pushing nullptr" << std::endl;
+		D(std::cerr << "No self ptr, pushing nullptr" << std::endl;)
 		stackmap_args.push_back(ConstantPointerNull::get(c.ObjPtrTy));
 	}
 	if (c.symbols["cmd"]) {
-		std::cerr << "This Closure has a CMD/sel ptr" << std::endl;
+		D(std::cerr << "This Closure has a CMD/sel ptr" << std::endl;)
 		stackmap_args.push_back(c.symbols["cmd"]);
 	} else {
-		std::cerr << "No CMD/sel ptr, pushing nullptr" << std::endl;
+//		std::cerr << "No CMD/sel ptr, pushing nullptr" << std::endl;
 		stackmap_args.push_back(ConstantPointerNull::get(c.ObjPtrTy));
 	}
 //	stackmap_args.push_back(c.B.CreateLoad(c.symbols["self"]));
@@ -808,7 +767,7 @@ c.B.SetInsertPoint(if_same_end);
 	// decls
 	// rely on deterministic hashing...
 	for (auto &local : currentlyCompiling->decls) {
-		std::cerr << "Saving local c.symbols[" << local << "] = " << c.symbols[local] << std::endl;
+		D(std::cerr << "Saving local c.symbols[" << local << "] = " << c.symbols[local] << std::endl;)
 //		stackmap_args.push_back(staticAddress(c, c.symbols[local], c.ObjPtrTy->getPointerTo()));
 //		stackmap_args.push_back(c.B.CreateLoad(c.symbols[local]));
 		stackmap_args.push_back(c.symbols[local]);
@@ -839,8 +798,156 @@ c.B.SetInsertPoint(if_same_end);
 	CallInst *print_call = CallInst::Create(CalleeF, ArgsV);
 	print_call->setCallingConv(CallingConv::C);
 	c.B.Insert(print_call);
-
+	
 	c.B.CreateRet(result_as_obj);
+
+// ------ Cache Hit ------	
+c.B.SetInsertPoint(cache_hit);
+
+if (cachedMethod == nullptr) {
+	D(std::cerr << "ERROR: cachedMethod being hardcoded into compiled code is NULL\n";)
+}
+
+// instrumentation, reset alternative path counter
+Value* alt_type_count_addr = staticAddress(c, &alternative_type_count, c.ObjPtrTy->getPointerTo());
+c.B.CreateStore(getAsObject(c, ConstantInt::get(c.ObjIntTy, 0)), alt_type_count_addr);
+
+FunctionType *methodType = c.getMethodType(0, args.size() - 2);
+Value* method_ptr_ptr = staticAddress(c, cachedMethod, methodType->getPointerTo()->getPointerTo());
+Value* cm /* (A -> B)* */ = c.B.CreateLoad(method_ptr_ptr, "method_ptr");
+Value* res1 /* B */ = c.B.CreateCall(cm, args, "res1_call_cached_method");
+
+// need to reset the currently executing function ptr in the runtime	
+Value *currently_executing_ptr = staticAddress(c, &MysoreScript::cur_jit_function, c.ObjPtrTy->getPointerTo(), "Runtime ptr cur jit func");
+Value *this_addr = staticAddress(c, currentlyCompiling, c.ObjPtrTy, "this ClosureDecl");
+Value *s = c.B.CreateStore(this_addr, currently_executing_ptr);
+
+return res1;
+
+
+/* type assumptions mean no more of these checks
+Value *intConst = ConstantInt::get(Type::getInt64Ty(c.C), 7);
+Value *objAsInt = c.B.CreatePtrToInt(obj, Type::getInt64Ty(c.C)); 
+Value *isInt = c.B.CreateAnd(objAsInt, intConst);
+// this needs to be a 1 bit wide int apparently!	
+Value *is_int_obj = c.B.CreateIntCast(isInt, Type::getInt1Ty(c.C), false);
+
+BasicBlock* if_is_int_obj_then = BasicBlock::Create(c.C, "if_is_int_obj.then", c.F);
+BasicBlock* if_is_int_obj_else = BasicBlock::Create(c.C, "if_is_int_obj.else", c.F);
+c.B.CreateCondBr(is_int_obj, if_is_int_obj_then, if_is_int_obj_else);
+
+
+c.B.SetInsertPoint(if_is_int_obj_then);
+
+	ArrayRef<Type*> tmpref3(c.ObjPtrTy);
+	Value *dbgprint3 = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, tmpref3, false));
+	std::vector<Value *> printargs3;
+	printargs3.push_back(c.B.CreateIntToPtr(ConstantInt::get(c.ObjIntTy, 3), c.ObjPtrTy));
+//	printargs.push_back(staticAddress(c, (void*)type_assumption, c.ObjPtrTy));
+	CallInst *print_call_tmp3 = CallInst::Create(dbgprint3, printargs3);
+	c.B.Insert(print_call_tmp3);
+*/
+
+// Value* cls_1 /* i8* */ = staticAddress(c, &SmallIntClass, c.ObjPtrTy);
+// BasicBlock* if_is_int_obj_end /* i1 */ = BasicBlock::Create(c.C, "if_is_int_obj.end", c.F);
+// c.B.CreateBr(if_is_int_obj_end);
+
+// c.B.SetInsertPoint(if_is_int_obj_else);
+
+// Value* cls_addr /* i8* */ = c.B.CreateConstGEP1_64(obj, offsetof(Object, isa), "cls_addr");
+// cls_addr /* i8** */ = c.B.CreateBitCast(cls_addr, cls_addr->getType()->getPointerTo(), "cls_addr_cast");
+// Value* cls_2 /* i8* */ = c.B.CreateLoad(cls_addr, "cls_2");
+
+
+//	Value *isa = c.B.CreateLoad(obj); // this is the 'isa' ptr ie a pointer to a class
+//	Value *cls_2 = c.B.CreateIntToPtr(isa, c.ObjPtrTy); // convert to right type of pointer
+
+/*
+	ArrayRef<Type*> tmpref(c.ObjPtrTy);
+	Value *dbgprint = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, tmpref, false));
+	std::vector<Value *> printargs;
+	Value *cls_as_obj = getAsObject(c, cls_2);
+	printargs.push_back(cls_2);
+//	printargs.push_back(c.B.CreateIntToPtr(ConstantInt::get(c.ObjIntTy, 4), c.ObjPtrTy));
+//	printargs.push_back(staticAddress(c, (void*)type_assumption, c.ObjPtrTy));
+	CallInst *print_call_tmp = CallInst::Create(dbgprint, printargs);
+	c.B.Insert(print_call_tmp);
+*/
+
+// c.B.CreateBr(if_is_int_obj_end);
+// /* DEBUG */ if_is_int_obj_else->dump();
+
+
+// c.B.SetInsertPoint(if_is_int_obj_end);
+/* And this */
+// PHINode* cls_assigned /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls_assigned");
+// cls_assigned->addIncoming(cls_1, if_is_int_obj_then);
+// cls_assigned->addIncoming(cls_2, if_is_int_obj_else);
+// c.B.CreateBr(if_not_null_obj_cont);
+
+// c.B.SetInsertPoint(if_not_null_obj_cont);
+/* Forgot about this one first time around */
+// PHINode* cls /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls");
+// cls->addIncoming(ConstantPointerNull::get(c.ObjPtrTy), entry);
+// cls->addIncoming(cls_assigned, if_is_int_obj_end);
+
+// make this into a permanent choice!!
+// Value *prev_cls_val = staticAddress(c, (void*)type_assumption, c.ObjPtrTy); // just a constant
+
+
+// Value* prev_cls_addr /* i8** */ = staticAddress(c, &type_assumption, c.ObjPtrTy->getPointerTo());
+// Value* prev_cls_val /* i8* */ = c.B.CreateLoad(prev_cls_addr, "prev_cls_val");
+// Value* same /* i1 */ = c.B.CreateICmpEQ(prev_cls_val, cls, "same");
+/*
+
+	ArrayRef<Type*> tmpref4(c.ObjPtrTy);
+	Value *dbgprint4 = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, tmpref4, false));
+	std::vector<Value *> printargs4a;
+	std::vector<Value *> printargs4b;
+	std::vector<Value *> printargs4c;
+	printargs4a.push_back(c.B.CreateIntToPtr(same, c.ObjPtrTy));
+	printargs4b.push_back(prev_cls_val);
+	printargs4c.push_back(cls);
+//	printargs.push_back(staticAddress(c, (void*)type_assumption, c.ObjPtrTy));
+	c.B.CreateCall(dbgprint4, printargs4a);
+	c.B.CreateCall(dbgprint4, printargs4b);
+	c.B.CreateCall(dbgprint4, printargs4c);
+
+*/
+/*
+BasicBlock* if_same_then = BasicBlock::Create(c.C, "if_same.then", c.F);
+BasicBlock* if_same_else = BasicBlock::Create(c.C, "if_same.else", c.F);
+c.B.CreateCondBr(same, if_same_then, if_same_else);
+*/
+
+// FAST PATH
+// c.B.SetInsertPoint(if_same_then);
+// reset alternative type count
+// Value* alt_type_count_addr = staticAddress(c, &alternative_type_count, c.ObjPtrTy->getPointerTo());
+// c.B.CreateStore(getAsObject(c, ConstantInt::get(c.ObjIntTy, 0)), alt_type_count_addr);
+
+// If we are invoking a method, then we must first look up the method, then call it.
+
+
+//FunctionType *methodType = c.getMethodType(0, args.size() - 2);
+//Value* prev_cm_addr = staticAddress(c, &cachedMethod, methodType->getPointerTo()->getPointerTo()->getPointerTo());
+//Value* prev_cm_val /* (A -> B)** */ = c.B.CreateLoad(prev_cm_addr, "prev_cm_val");
+//Value* valid_prev_cm /* i1 */ = c.B.CreateIsNotNull(prev_cm_val, "valid_prev_cm");
+//BasicBlock* if_valid_prev_cm_body = BasicBlock::Create(c.C, "if_valid_prev_cm.body", c.F);
+//BasicBlock* if_same_end = BasicBlock::Create(c.C, "if_same.end", c.F);
+//c.B.CreateCondBr(valid_prev_cm, if_valid_prev_cm_body, if_same_end);
+// /* DEBUG */ if_same_then->dump();
+
+//c.B.SetInsertPoint(if_valid_prev_cm_body);
+//Value* cm /* (A -> B)* */ = c.B.CreateLoad(prev_cm_val, "cm");
+//Value* res1 /* B */ = c.B.CreateCall(cm, args, "res1_call_cached_method");
+//BasicBlock* ans = BasicBlock::Create(c.C, "ans", c.F);
+//c.B.CreateBr(ans);
+// /* DEBUG */ if_valid_prev_cm_body->dump();
+
+
+
+
 
 /*
  
@@ -868,19 +975,13 @@ c.B.CreateBr(ans);
 // if_same_end->dump();
 */
 
-c.B.SetInsertPoint(ans);
-PHINode* result /* B */ = c.B.CreatePHI(c.ObjPtrTy, 1, "cls");
-result->addIncoming(res1 /* B */, if_valid_prev_cm_body);
+// c.B.SetInsertPoint(ans);
+// PHINode* result /* B */ = c.B.CreatePHI(c.ObjPtrTy, 1, "cls");
+// result->addIncoming(res1 /* B */, if_valid_prev_cm_body);
 // result->addIncoming(res2 /* B */, if_same_end);
 // /* DEBUG */ ans->dump();
 
 
-// need to reset the currently executing function ptr in the runtime	
-Value *currently_executing_ptr = staticAddress(c, &MysoreScript::cur_jit_function, c.ObjPtrTy->getPointerTo(), "Runtime ptr cur jit func");
-Value *this_addr = staticAddress(c, currentlyCompiling, c.ObjPtrTy, "this ClosureDecl");
-Value *s = c.B.CreateStore(this_addr, currently_executing_ptr);
-
-return result;
 
 
 /*
@@ -1285,9 +1386,7 @@ void Decl::compile(Compiler::Context &c)
 	{
 		assert(c.symbols[name]);
 		Value *v = init->compileExpression(c);
-		std::cerr << "Storing " << name << " = " ;
 		v->dump();
-		std::cerr << " Storing declaration to addr: " << c.symbols[name] << std::endl;
 		c.B.CreateStore(getAsObject(c, v),
 				c.symbols[name]);
 	}
@@ -1297,9 +1396,7 @@ void Assignment::compile(Compiler::Context &c)
 	assert(c.symbols[target->name]);
 	// Store the result of the expression in the address of the named variable.
 	Value *v = getAsObject(c, expr->compileExpression(c));
-	std::cerr << "Storing " << target->name << " = ";
 	v->dump();
-	std::cerr << " Storing assignment to addr: " << c.symbols[target->name] << std::endl;
 	c.B.CreateStore(v,
 			c.symbols[target->name]);
 }

@@ -136,6 +136,7 @@ class A
 
 	func get_val()
 	{
+
 		a = a + 1;
 		return a;
 	}

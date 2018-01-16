@@ -3,6 +3,14 @@
 #include "parser.hh"
 #include "SMRecordParser.cpp"
 
+#define DEBUG 0
+
+#ifdef DEBUG 
+#define D(x) x
+#else 
+#define D(x)
+#endif
+
 #define RECOMPILE_THRESHOLD 10	// number of times we need to hit a different type assumption to force a recompile
 
 using namespace AST;
@@ -24,20 +32,17 @@ inline bool needsGC(Obj o)
 
 Interpreter::Context *currentContext;
 
-void msg(const char *m) {
-	std::cerr << m << std::endl;
-}
 
 Obj resumeInInterpreter(Statement* ast_node) {
 	ClosureDecl* root = cur_jit_function;
-	
-	msg("*Beginning skip_to");
-	
+
+	D(std::cerr << "Resuming in ClosureDecl: " << (void*) root << std::endl;)
+
 
 	root->skip_to(*currentContext, ast_node);
-	std::cerr << "---Finished in interpreter---\n";
-	std::cerr << "Context.isReturning: " << std::to_string(currentContext->isReturning) << std::endl;
-	std::cerr << "Context.returnValue: " << (void*)(currentContext->retVal) << std::endl;
+	D(std::cerr << "---Finished in interpreter---" << std::endl;)	
+	D(std::cerr << "Context.isReturning: " << std::to_string(currentContext->isReturning) << std::endl;)
+	D(std::cerr << "Context.returnValue: " << (void*)(currentContext->retVal) << std::endl;)
 	currentContext->isReturning = false;
 	currentContext->astNodeFound = false;
 
@@ -51,13 +56,8 @@ Obj resumeInInterpreter(Statement* ast_node) {
 // return address at 8(%bp) == stackmap_record_offset + stackmap_function_address
 Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *regs_end, uint64_t* return_reg) {
 
-
-	std::cerr << "return value 8(bp) or *(ptr+1): " << *(bp+1) << std::endl;
-
 	// retrieve the current stackmap
 	StackMapParser *smp = MysoreScript::getStackMap();
-	std::cerr << "Retrieved current stackmap to start reconstructing interpreter context" << std::endl;
-	std::cerr << "It has: " << smp->getNumRecords() << " records in it" << std::endl;
 
 	// one stackmap per function and vice versa
 	assert(smp->getNumFunctions() == 1);
@@ -88,12 +88,11 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 	Interpreter::SymbolTable &symtab = *reconstructed_values; // for ease of use...	
 	
 	*return_reg = record_parser.next_value();
-	std::cerr << "Retrieved Return loc from stackmap " << *return_reg << std::endl;
+	D(std::cerr << "Retrieved Return loc from stackmap " << *return_reg << std::endl;)
 
 	// AST pointer to resume at
 	uint64_t resume_node_int = record_parser.next_value();
 	pegmatite::ASTNode* resume_ast = (pegmatite::ASTNode*)(resume_node_int);
-	std::cerr << "AST node to resume at: " << (void*)resume_ast << std::endl;
 	AST::Statement *resume_stmt = dynamic_cast<AST::Statement*>(resume_ast);
 
 	// self and cmd (selector) pointers
@@ -104,11 +103,11 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 	
 	bool isMethod = true;
 	if (self == nullptr) {
-		std::cerr << "This closure has non-null self pointer" << std::endl;
+		D(std::cerr << "This closure has null self pointer" << std::endl;)
 		isMethod = false;
 	}
 	if (cmd == nullptr) {
-		std::cerr << "This closure has a null cmd value" << std::endl;
+		D(std::cerr << "This closure has a null cmd value" << std::endl;)
 		isMethod = false;
 	}
 
@@ -120,8 +119,6 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 		Obj *ivars = (reinterpret_cast<Obj*>(& ((*self)->isa))) + 1;
 		for (int32_t i = 0 ; i < cls->indexedIVarCount ; i++)
 		{
-			std::cerr << "Setting instance variable: " << cls->indexedIVarNames[i];
-			std::cerr << " to value: " << ivars[i] << std::endl;
 			symtab[cls->indexedIVarNames[i]] =  &ivars[i];
 		}
 	}
@@ -129,8 +126,8 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 	// params
 	for (auto &param : cur_jit_function->parameters->arguments) {
 		auto val = record_parser.next_value();
-		std::cerr << "Retrieved parameter addr from stackmap: " << *param.get() << " = " << std::to_string(val);
-		std::cerr << "; deref: " << std::to_string(*(uint64_t*)val) << std::endl;
+		D(std::cerr << "Retrieved parameter addr from stackmap: " << *param.get() << " = " << std::to_string(val);)
+		D(std::cerr << "; deref: " << std::to_string(*(uint64_t*)val) << std::endl;)
 
 		symtab[*param.get()] = (Obj *)val;
 	}
@@ -142,8 +139,8 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 	// should be ok though since it's all within 1 execution and no elements being added after parse
 	for (auto &local : cur_jit_function->decls) {
 		auto val = record_parser.next_value();
-		std::cerr << "Retrieved local addr from stackmap: " << local << " = " << std::to_string(val) << std::endl; 
-		std::cerr << "; deref: " << std::to_string(*(uint64_t*)val) << std::endl;
+		D(std::cerr << "Retrieved local addr from stackmap: " << local << " = " << std::to_string(val) << std::endl; )
+		D(std::cerr << "; deref: " << std::to_string(*(uint64_t*)val) << std::endl;)
 		symtab[local] = (Obj *)val;
 	}
 
@@ -151,8 +148,8 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 	if (!cur_jit_function->boundVars.empty()) {
 		for (auto &bound : cur_jit_function->boundVars) {
 			auto val = record_parser.next_value();
-			std::cerr << "Retrieved bound addr from stackmap: " << bound << " = " << std::to_string(val) << std::endl;
-		std::cerr << "; deref: " << std::to_string(*(uint64_t*)val) << std::endl;
+			D(std::cerr << "retrieved bound var from stackmap: " << bound << std::endl;)		
+			D(std::cerr << "; deref: " << std::to_string(*(uint64_t*)val) << std::endl;)
 			symtab[bound] = (Obj *)val;
 		}
 	}
@@ -165,12 +162,12 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 
 	auto retVal = resumeInInterpreter(resume_stmt);
 
-	if (currentContext->recompile) {
-		std::cerr << "Initiating recompilation!" << std::endl;
+	if (cur_jit_function->recompile) {
+		D(std::cerr << "Initiating recompilation of: " << (void*)cur_jit_function <<  std::endl;)
 		// initiate a recompilation!
 		ClosureDecl *target = cur_jit_function;
 		if (isMethod) {
-			std::cerr << "Recompiling as method" << std::endl;
+			D(std::cerr << "Recompiling as method" << std::endl;)
 			// use "self" and "cmd" to retrieve the method
 			// recompile it
 			// and attach it to the method
@@ -183,13 +180,14 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 			mth->function = recompiled; 
 			// memory leaking the old function probably? can't `delete` it since need to return to it once more...
 		} else {
-			std::cerr << "Recompiling as closure" << std::endl;
+			D(std::cerr << "Recompiling as closure" << std::endl;)
 			// it's a closure, still have to figure this one out...
-			Closure *closure = reinterpret_cast<Closure*>(self);
-			closure->invoke = target->compileClosure(currentContext->globalSymbols);
+			Closure *closure = reinterpret_cast<Closure*>(*self);
+			auto v = target->compileClosure(currentContext->globalSymbols);
+			closure->invoke = v;
 			target->compiledClosure = closure->invoke; //set the closure within this class	
 		}
-		currentContext->recompile = false;
+		cur_jit_function->recompile = false;
 	}
 
 	// reset the context
@@ -563,20 +561,15 @@ void Context::setSymbol(const std::string &name, Obj *val)
 
 void Statements::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	for (auto &s : statements) {
-		msg("**Skip to in Statements for loop**");
 		if (c.isReturning) {
-			msg("***Hit isReturning within Statements loop***");
 			return;
 		}
 		if (c.astNodeFound) {
-			msg("***Found AST node within Statements loop***");
 			s->interpret(c);
 		} else {
-			msg("***Running skip_to in Statements loop***");
 			s->skip_to(c, ast_node);
 		}
 	}
-	msg("Exiting Statements without finding a return");
 }
 
 
@@ -623,8 +616,6 @@ Obj Expression::evaluate(Interpreter::Context &c)
 
 Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 
-	std::cerr << "In Interpreter do_call" << std::endl;
-
 	// Array of arguments.  
 	Obj args[10];
 	// Get the callee, which is either a closure or some other object that will
@@ -650,7 +641,10 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 		}
 		assert(obj->isa == &ClosureClass);
 		Closure *closure = reinterpret_cast<Closure*>(obj);
-		return callCompiledClosure(closure->invoke, closure, args, i);
+		auto saved = cur_jit_function;
+		auto v = callCompiledClosure(closure->invoke, closure, args, i);
+		cur_jit_function = saved;
+		return v; 
 	}
 	// Look up the selector and method to call
 	Selector sel = lookupSelector(*method.get());
@@ -669,13 +663,16 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 	if (cls_intptr == type_assumption) {
 		alternative_type_count = 0; //reset alternative counter
 		if (cachedMethod) {
-			return callCompiledMethod(*cachedMethod, obj, sel, args, arguments->arguments.size());
+			auto saved = cur_jit_function;
+			auto v = callCompiledMethod(*cachedMethod, obj, sel, args, arguments->arguments.size());
+			cur_jit_function = saved;
+			return v;
 		}
 	} else {
 		if (type_assumption == 0) {
 			type_assumption = cls_intptr; // default behavior here, might not have any cache beforoe
 		} else if (cls_intptr == alternative_type) {
-			std::cerr << "Recording alternative type information" << std::endl;
+			D(std::cerr << "Recording alternative type information" << std::endl;)
 			// do some accounting to check if we've hit the alternative type
 			alternative_type_count++;
 			// if hit alternative type enought times
@@ -683,8 +680,8 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 				type_assumption = alternative_type;
 				alternative_type = 0;
 				alternative_type_count = 0;
-				std::cerr << "Setting recompile flag!" << std::endl;
-				c.recompile = true;
+				D(std::cerr << "Setting recompile flag for this closure: " << (void*)cur_jit_function << std::endl;)
+				cur_jit_function->recompile = true;
 			}
 		} else {
 			// replace atlernative type we're tracking with the new one
@@ -693,11 +690,21 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 		}
 	}
 
+
+
 	CompiledMethod *mth = ptrToCompiledMethodForSelector(obj, sel);
 	assert(mth && *mth);
 	cachedMethod = mth;
-	return callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
-/*
+
+	D(std::cerr << "[Call] Type Assumption: " << type_assumption  << std::endl;)
+	D(std::cerr << "[Call] Cached Method*: " << (void*)mth << std::endl;)
+	D(std::cerr << "[Call] Cached Method: " << *(void**)mth << std::endl;)
+	auto saved = cur_jit_function;
+	auto v = callCompiledMethod(*mth, obj, sel, args, arguments->arguments.size());
+	cur_jit_function = saved;
+	return v;
+		
+		/*
 	// inline caching
 	CompiledMethod *mth;
 	if (cls == cachedClass && cachedMethod != nullptr) {
@@ -715,17 +722,11 @@ Obj Call::do_call(Interpreter::Context &c, Obj obj) {
 }
 
 Obj Call::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
-	msg("* Call skip_to");
-	msg("Value of Cookie: " );
-	std::cerr << c.lookupSymbol("cookie") << std::endl;;
 	Obj obj = callee->expr_skip_to(c, ast_node);
-	msg("* Call skip_to : expr to call evaluated");
 	if (c.astNodeFound) {
-		msg("* Call skip_to: EXPR contained node!! Executing call");
 		return do_call(c, obj); 
 	} 
 	if (this == ast_node) {
-		msg("* Call skip_to: THIS is the node!, executing!");
 		c.astNodeFound = true;
 		return do_call(c, obj);	
 	} 
@@ -799,7 +800,6 @@ void ClosureDecl::collectVarUses(std::unordered_set<std::string> &decls,
  */
 
 Obj ClosureDecl::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
-	msg("-| Enter ClosureDecl expr_skip_to");
 // Interpret the statements in this method;
 body->skip_to(c, ast_node);
 assert(c.astNodeFound || "Searched ClosureDecl body for node but astNodeFound is false?");
@@ -865,20 +865,22 @@ Obj ClosureDecl::interpretMethod(Interpreter::Context &c, Method *mth, Obj self,
 	check();
 	Class *cls = isInteger(self) ? &SmallIntClass : self->isa;
 	executionCount++;
-	std::cerr << " In Interpret method!" << std::endl;
 	// If we've interpreted this method enough times then try to compile it.
-	if (forceCompiler || (executionCount == compileThreshold))
+	if (forceCompiler || (executionCount == compileThreshold) || recompile)
 	{
-		std::cerr << " Compiling method" << std::endl;
 		mth->function = compileMethod(cls, c.globalSymbols);
 		compiledClosure = reinterpret_cast<ClosureInvoke>(mth->function);
+		recompile = false;
 	}
 	// If we now have a compiled version, try to execute it.
 	if (compiledClosure)
 	{
 		auto v = callCompiledMethod(reinterpret_cast<CompiledMethod>(compiledClosure),
 			self, sel, args, parameters->arguments.size());
-		std::cerr << "Result of compiiled method: " << (void*)v << std::endl;
+		// note that the compiledMethod will have set cur_jit_function
+		// need to set it back in case this interpreted method
+		// is a resumption of a JIT'ed one
+		cur_jit_function = this;
 		return v;
 	}
 	// Create a new symbol table for this method.
@@ -925,23 +927,24 @@ Obj ClosureDecl::interpretClosure(Interpreter::Context &c, Closure *self,
 		Obj *args)
 {
 	executionCount++;
-	std::cerr << "Interpret closure!" << std::endl;
 	// If we've interpreted this enough times, compile it.
-	if (forceCompiler || (executionCount == compileThreshold))
+	if (forceCompiler || (executionCount == compileThreshold) || recompile)
 	{
-		std::cerr << "Compiling closure!" << std::endl;
 		// Note that we don't pass any symbols other than the globals into the
 		// compiler, because all of the bound variables are already copied into
 		// the closure object when it is created.
 		self->invoke = compileClosure(c.globalSymbols);
 		compiledClosure = self->invoke;
+		recompile = false;
 	}
 	// If we now have a compiled version, call it
 	if (compiledClosure)
 	{
 		auto v = callCompiledClosure(compiledClosure, self, args,
 				parameters->arguments.size());
-		std::cerr << "Result of compiiled method: " << (void*)v << std::endl;
+		// note that the compiledMethod will have set cur_jit_function
+		// need to set it back in case this interpreted method
+		// is a resumption of a JIT'ed one
 		return v; 
 	}
 	// Create a new symbol table for this closure
@@ -1011,7 +1014,7 @@ void IfStatement::skip_to(Interpreter::Context &c, Statement* ast_node) {
 		return;
 	}
 	if (this == ast_node) {
-		std::cerr << "HELP! IFStatement is the AST Node to resume at... ??" << std::endl;
+		D(std::cerr << "HELP! IFStatement is the AST Node to resume at... ??" << std::endl;)
 		c.astNodeFound = true;
 		body->interpret(c); // execute remainder?
 		return;
@@ -1045,7 +1048,7 @@ void WhileLoop::skip_to(Interpreter::Context &c, Statement* ast_node) {
 //
 	Obj cond = condition->expr_skip_to(c, ast_node);
 	if (c.astNodeFound) {
-		std::cerr << "WhileLoop: found AST NODE in CONDITION!" << std::endl;
+		D(std::cerr << "WhileLoop: found AST NODE in CONDITION!" << std::endl;)
 	}
 	// interpret body if condition was true and ast_node found within
 	if (c.astNodeFound && (reinterpret_cast<intptr_t>(cond)) & ~7) {
@@ -1056,7 +1059,7 @@ void WhileLoop::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	}
 
 	if (this == ast_node) {
-		std::cerr << "HELP! WhileLoop is ast_node to resume at...?" << std::endl;
+		D(std::cerr << "HELP! WhileLoop is ast_node to resume at...?" << std::endl;)
 		c.astNodeFound = true;
 		interpret(c); // ???
 		return;
@@ -1083,7 +1086,7 @@ void WhileLoop::interpret(Interpreter::Context &c)
 void Decl::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj v = nullptr;
 	if (this == ast_node) {
-		std::cerr << "HELP! Decl is ast_node to resume at, not handled" << std::endl;
+		D(std::cerr << "HELP! Decl is ast_node to resume at, not handled" << std::endl;)
 		c.astNodeFound = true;
 		// not quite sure what this means, shouldn't be possible to resume in the decl itself
 		// might be possible in the `init` expr, handled below
@@ -1116,7 +1119,7 @@ void Assignment::skip_to(Interpreter::Context &c, Statement* ast_node)  {
 		c.setSymbol(target->name, result);
 	}
 	if (this == ast_node) {
-		std::cerr << "HELP! Assignment is node to resume at itself?" << std::endl;
+		D(std::cerr << "HELP! Assignment is node to resume at itself?" << std::endl;)
 		c.astNodeFound = true;
 		c.setSymbol(target->name, result); // do we actually execute this?
 		return;
@@ -1147,7 +1150,14 @@ Obj BinOpBase::performOp(Interpreter::Context &c, Obj LHS, Obj RHS) {
 	// If this method calls back into the interpreter, then we must be able to
 	// find the context.
 	currentContext = &c;
-	return (reinterpret_cast<Obj(*)(Obj,Selector,Obj)>(mth))(LHS, sel, RHS);
+
+	// save during call
+	auto saved = cur_jit_function;
+	auto v = 	 (reinterpret_cast<Obj(*)(Obj,Selector,Obj)>(mth))(LHS, sel, RHS);	
+
+	// may be calling into overloaded bin op in the JIT
+	cur_jit_function = saved;
+	return v;
 }
 
 
@@ -1155,14 +1165,14 @@ Obj BinOpBase::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj LHS = lhs->expr_skip_to(c, ast_node);
 	// LHS contains node we're looking for, interpret RHS and OP
 	if (c.astNodeFound) {
-		std::cerr << "Found ast node in LHS of BinOp!" << std::endl;
+		D(std::cerr << "Found ast node in LHS of BinOp!" << std::endl;)
 		Obj RHS = rhs->evaluate(c);
 		return performOp(c, LHS, RHS);
 	}
 
 	Obj RHS = rhs->expr_skip_to(c, ast_node);
 	if (c.astNodeFound) {
-		std::cerr << "Found ast node in RHS of BinOp UNHANDLED (get value from compiler)" << std::endl;
+		D(std::cerr << "Found ast node in RHS of BinOp UNHANDLED (get value from compiler)" << std::endl;)
 		// TODO get the LHS from the compiled execution of lhs
 		Obj LHS_compiled_val = nullptr;
 		return performOp(c, LHS_compiled_val, RHS);
@@ -1170,7 +1180,7 @@ Obj BinOpBase::expr_skip_to(Interpreter::Context &c, Statement* ast_node) {
 
 	// the binary op itself shouldn't be what we're looking for...?
 	if (this == ast_node) {
-		std::cerr << "HELP BinOp matched ast_node, this is unimplemented" << std::endl;
+		D(std::cerr << "HELP BinOp matched ast_node, this is unimplemented" << std::endl;)
 		c.astNodeFound = true;
 	}
 
@@ -1189,14 +1199,14 @@ Obj BinOpBase::evaluateExpr(Interpreter::Context &c)
 void Return::skip_to(Interpreter::Context &c, Statement* ast_node) {
 	Obj ret_val = expr->expr_skip_to(c, ast_node);
 	if (c.astNodeFound) {
-		std::cerr << "Found ast_node in RHS of Return!" << std::endl;
+		D(std::cerr << "Found ast_node in RHS of Return!" << std::endl;)
 		c.retVal = ret_val;
 		c.isReturning = true;
 		return;
 	} 
 
 	if (this == ast_node) {
-		std::cerr << "HELP Return matched ast_node, this is unimplemented" << std::endl;
+		D(std::cerr << "HELP Return matched ast_node, this is unimplemented" << std::endl;)
 		c.astNodeFound = true;
 	}
 }
@@ -1269,8 +1279,7 @@ void ClassDecl::interpret(Interpreter::Context &c)
 Obj NewExpr::evaluateExpr(Interpreter::Context &c)
 {
 	// Look up the class in the class table and create a new instance of it.
-		auto object = newObject(lookupClass(className));
-		std::cerr << " Create new object with isa: " << object->isa << std::endl;
+	auto object = newObject(lookupClass(className));
 	return object;
 }
 
