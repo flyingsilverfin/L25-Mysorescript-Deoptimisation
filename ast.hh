@@ -7,8 +7,6 @@
 
 #include <iostream>
 
-#define DEBUG 0
-
 #ifdef DEBUG 
 #define D(x) x
 #else 

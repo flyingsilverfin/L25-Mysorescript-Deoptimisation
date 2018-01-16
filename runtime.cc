@@ -760,6 +760,7 @@ Obj callCompiledClosure(ClosureInvoke m, Closure *receiver, Obj *args,
 
 extern "C"
 {
+D(
 int32_t print_msg (void *v) {
 	std::cerr << "++++Printing message from JIT: " << (void*)v << std::endl;
 	return 0;
@@ -768,7 +769,7 @@ int32_t print_msg (void *v) {
 int32_t print_msg_3 (void *a, void* b, void* c) {
 	std::cerr << "++++Printing message from JIT: " << a << ", " << b << ", " << c << std::endl;
 	return 0;
-}
+})
 
 	//dummy to force linker
 	void dummy() {

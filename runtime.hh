@@ -7,6 +7,12 @@
 #include "StackMapParser.hh"
 #include <unordered_map>
 
+#ifdef DEBUG 
+#define D(x) x
+#else 
+#define D(x)
+#endif
+
 extern "C" intptr_t x86_trampoline();
 
 

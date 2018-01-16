@@ -181,7 +181,7 @@ ClosureInvoke Compiler::Context::compile()
 
 	// If you want to see the LLVM IR before optimisation, uncomment the
 	// following line:
-	// D(M->dump());	
+	D(M->dump());	
 
 
 	// Run the passes to optimise the function / module.
@@ -634,7 +634,7 @@ c.B.SetInsertPoint(if_not_null_obj_body);
 
 
 if (type_assumption == (intptr_t)&SmallIntClass) {
-//	D(std::cerr << " Type assumption: " << (void*) type_assumption << " = SmallIntClass\n";)
+	D(std::cerr << " Type assumption: " << (void*) type_assumption << " = SmallIntClass\n";)
 	// confirm object is an int	
 	Value *intConst = ConstantInt::get(Type::getInt64Ty(c.C), 7);
 	Value *objAsInt = c.B.CreatePtrToInt(obj, Type::getInt64Ty(c.C)); 
@@ -644,7 +644,7 @@ if (type_assumption == (intptr_t)&SmallIntClass) {
 
 
 } else {
-//	D(std::cerr << " Type assumption: " << (void*) type_assumption << " != SmallIntClass\n";)
+	D(std::cerr << " Type assumption: " << (void*) type_assumption << " != SmallIntClass\n";)
 	Value *expected_cls = staticAddress(c, (void*)type_assumption, c.ObjPtrTy); // just a constant
 	Value* cls_addr /* i8* */ = c.B.CreateConstGEP1_64(obj, offsetof(Object, isa), "cls_addr");
 	cls_addr /* i8** */ = c.B.CreateBitCast(cls_addr, cls_addr->getType()->getPointerTo(), "cls_addr_cast");
@@ -702,7 +702,7 @@ c.B.SetInsertPoint(cache_miss);
 	num_args += currentlyCompiling->parameters->arguments.size();
 	num_args += currentlyCompiling->decls.size(); // local vars
 	num_args += currentlyCompiling->boundVars.size(); // bound vars
-//	D(std::cerr << "Number of params+ locals + bound vars: " << num_args - 3 << std::endl;)
+	D(std::cerr << "Number of params+ locals + bound vars: " << num_args - 3 << std::endl;)
 	stackmap_args.push_back(ConstantInt::get(Type::getInt32Ty(c.C), num_args)); 
 
 	
@@ -719,14 +719,14 @@ c.B.SetInsertPoint(cache_miss);
 
 	// self and cmd pointers
 	if (c.symbols["self"]) {
-//		D(std::cerr << "This closure has a self ptr" << std::endl;)	
+		D(std::cerr << "This closure has a self ptr" << std::endl;)	
 		stackmap_args.push_back(c.symbols["self"]);
 	} else {
-//		D(std::cerr << "No self ptr, pushing nullptr" << std::endl;)
+		D(std::cerr << "No self ptr, pushing nullptr" << std::endl;)
 		stackmap_args.push_back(ConstantPointerNull::get(c.ObjPtrTy));
 	}
 	if (c.symbols["cmd"]) {
-//		D(std::cerr << "This Closure has a CMD/sel ptr" << std::endl;)
+		D(std::cerr << "This Closure has a CMD/sel ptr" << std::endl;)
 		stackmap_args.push_back(c.symbols["cmd"]);
 	} else {
 //		std::cerr << "No CMD/sel ptr, pushing nullptr" << std::endl;
@@ -746,7 +746,7 @@ c.B.SetInsertPoint(cache_miss);
 	// decls
 	// rely on deterministic hashing...
 	for (auto &local : currentlyCompiling->decls) {
-//		D(std::cerr << "Saving local c.symbols[" << local << "] = " << c.symbols[local] << std::endl;)
+		D(std::cerr << "Saving local c.symbols[" << local << "] = " << c.symbols[local] << std::endl;)
 //		stackmap_args.push_back(staticAddress(c, c.symbols[local], c.ObjPtrTy->getPointerTo()));
 //		stackmap_args.push_back(c.B.CreateLoad(c.symbols[local]));
 		stackmap_args.push_back(c.symbols[local]);
@@ -1367,7 +1367,7 @@ void Decl::compile(Compiler::Context &c)
 	{
 		assert(c.symbols[name]);
 		Value *v = init->compileExpression(c);
-		// v->dump();
+		v->dump();
 		c.B.CreateStore(getAsObject(c, v),
 				c.symbols[name]);
 	}
@@ -1377,7 +1377,7 @@ void Assignment::compile(Compiler::Context &c)
 	assert(c.symbols[target->name]);
 	// Store the result of the expression in the address of the named variable.
 	Value *v = getAsObject(c, expr->compileExpression(c));
-	// v->dump();
+	v->dump();
 	c.B.CreateStore(v,
 			c.symbols[target->name]);
 }

@@ -3,8 +3,6 @@
 #include "parser.hh"
 #include "SMRecordParser.cpp"
 
-#define DEBUG 0
-
 #ifdef DEBUG 
 #define D(x) x
 #else 
@@ -103,11 +101,11 @@ Obj reconstructInterpreterContext(uint64_t *bp, uint64_t *regs_start, uint64_t *
 	
 	bool isMethod = true;
 	if (self == nullptr) {
-		D(std::cerr << "This closure has null self pointer" << std::endl;)
+		// D(std::cerr << "This closure has null self pointer" << std::endl;)
 		isMethod = false;
 	}
 	if (cmd == nullptr) {
-		D(std::cerr << "This closure has a null cmd value" << std::endl;)
+		// D(std::cerr << "This closure has a null cmd value" << std::endl;)
 		isMethod = false;
 	}
 
@@ -498,11 +496,11 @@ void Value::set(Obj o)
 }
 Value::~Value()
 {
-	if (needsGC(object))
-	{
-		assert(holder != nullptr);
-		GC_free(holder);
-	}
+//	if (needsGC(object))
+//	{
+//		assert(holder != nullptr);
+//		GC_free(holder);
+//	}
 }
 Obj *Context::lookupSymbol(const std::string &name)
 {

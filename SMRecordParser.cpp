@@ -17,7 +17,6 @@
 //Liveout array
 #define LIVEOUT_ENTRY_SIZE 4
 
-#define DEBUG 1 
 #ifdef DEBUG 
 #define D(x) x
 #else 
