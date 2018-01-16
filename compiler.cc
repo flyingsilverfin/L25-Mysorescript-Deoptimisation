@@ -641,11 +641,15 @@ Value* cls_addr /* i8* */ = c.B.CreateConstGEP1_64(obj, offsetof(Object, isa), "
 cls_addr /* i8** */ = c.B.CreateBitCast(cls_addr, cls_addr->getType()->getPointerTo(), "cls_addr_cast");
 Value* cls_2 /* i8* */ = c.B.CreateLoad(cls_addr, "cls_2");
 
+
+//	Value *isa = c.B.CreateLoad(obj); // this is the 'isa' ptr ie a pointer to a class
+//	Value *cls_2 = c.B.CreateIntToPtr(isa, c.ObjPtrTy); // convert to right type of pointer
+
 	ArrayRef<Type*> tmpref(c.ObjPtrTy);
 	Value *dbgprint = c.M->getOrInsertFunction("print_msg", FunctionType::get(c.SelTy, tmpref, false));
 	std::vector<Value *> printargs;
-	Value *cls_as_obj = getAsObject(c, cls_addr);
-	printargs.push_back(cls_as_obj);
+//	Value *cls_as_obj = getAsObject(c, cls_2);
+	printargs.push_back(staticAddress(c, (void*)type_assumption, c.ObjPtrTy));
 	CallInst *print_call_tmp = CallInst::Create(dbgprint, printargs);
 	c.B.Insert(print_call_tmp);
 
@@ -667,8 +671,13 @@ c.B.SetInsertPoint(if_not_null_obj_cont);
 PHINode* cls /* i8* */ = c.B.CreatePHI(c.ObjPtrTy, 2, "cls");
 cls->addIncoming(ConstantPointerNull::get(c.ObjPtrTy), entry);
 cls->addIncoming(cls_assigned, if_is_int_obj_end);
-Value* prev_cls_addr /* i8** */ = staticAddress(c, &type_assumption, c.ObjPtrTy->getPointerTo());
-Value* prev_cls_val /* i8* */ = c.B.CreateLoad(prev_cls_addr, "prev_cls_val");
+
+// make this into a permanent choice!!
+// Value *prev_cls = staticAddress(c, type_assumption, c.ObjPtrTy); // just a constant
+
+
+ Value* prev_cls_addr /* i8** */ = staticAddress(c, &type_assumption, c.ObjPtrTy->getPointerTo());
+ Value* prev_cls_val /* i8* */ = c.B.CreateLoad(prev_cls_addr, "prev_cls_val");
 Value* same /* i1 */ = c.B.CreateICmpEQ(prev_cls_val, cls, "same");
 BasicBlock* if_same_then = BasicBlock::Create(c.C, "if_same.then", c.F);
 BasicBlock* if_same_else = BasicBlock::Create(c.C, "if_same.else", c.F);

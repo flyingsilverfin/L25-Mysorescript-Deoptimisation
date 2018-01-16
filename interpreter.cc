@@ -1269,6 +1269,8 @@ void ClassDecl::interpret(Interpreter::Context &c)
 Obj NewExpr::evaluateExpr(Interpreter::Context &c)
 {
 	// Look up the class in the class table and create a new instance of it.
-	return newObject(lookupClass(className));
+		auto object = newObject(lookupClass(className));
+		std::cerr << " Create new object with isa: " << object->isa << std::endl;
+	return object;
 }
 
