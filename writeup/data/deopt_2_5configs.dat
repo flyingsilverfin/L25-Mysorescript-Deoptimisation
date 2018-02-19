@@ -1,0 +1,6 @@
+x, y, ey
+Interpreter,1.048022, 0.0130263721
+Interpreter+compile ,0.5179802, 0.0044063919
+Interpreter+Inline caching, 1.040562, 0.003414377
+JIT-inline-caching	, 0.5094416, 0.0050762719
+Deoptimization, 0.629216, 0.0015709332

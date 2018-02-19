@@ -2,6 +2,8 @@
 Original source from https://github.com/CompilerTeaching/MysoreScript
 (Not forked)
 
+Mostly lives under src/
+
 # Implementation
 I have included JIT deoptimisation support on the method granularity. There are several limitations, for instance that side exits be on statement boundaries (no partial expression values are transferred from JIT to interpreter). In practice this would mean restricting oneself to SSA-like code.
 

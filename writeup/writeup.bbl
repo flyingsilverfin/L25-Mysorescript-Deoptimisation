@@ -1,0 +1,79 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 2.8 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \sortlist[entry]{nty/global/}
+    \entry{aycock2003brief}{article}{}
+      \name{author}{1}{}{%
+        {{hash=049b32b7099aaf092ef4ab0d94f82dc5}{%
+           family={Aycock},
+           familyi={A\bibinitperiod},
+           given={John},
+           giveni={J\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {ACM}%
+      }
+      \strng{namehash}{049b32b7099aaf092ef4ab0d94f82dc5}
+      \strng{fullhash}{049b32b7099aaf092ef4ab0d94f82dc5}
+      \strng{authornamehash}{049b32b7099aaf092ef4ab0d94f82dc5}
+      \strng{authorfullhash}{049b32b7099aaf092ef4ab0d94f82dc5}
+      \field{sortinit}{A}
+      \field{sortinithash}{3248043b5fe8d0a34dab5ab6b8d4309b}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{ACM Computing Surveys (CSUR)}
+      \field{number}{2}
+      \field{title}{A brief history of just-in-time}
+      \field{volume}{35}
+      \field{year}{2003}
+      \field{pages}{97\bibrangedash 113}
+      \range{pages}{17}
+    \endentry
+    \entry{mccarthy1960recursive}{article}{}
+      \name{author}{1}{}{%
+        {{hash=627c3779677d0eaf3312e5b67e8cbe0c}{%
+           family={McCarthy},
+           familyi={M\bibinitperiod},
+           given={John},
+           giveni={J\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {ACM}%
+      }
+      \strng{namehash}{627c3779677d0eaf3312e5b67e8cbe0c}
+      \strng{fullhash}{627c3779677d0eaf3312e5b67e8cbe0c}
+      \strng{authornamehash}{627c3779677d0eaf3312e5b67e8cbe0c}
+      \strng{authorfullhash}{627c3779677d0eaf3312e5b67e8cbe0c}
+      \field{sortinit}{M}
+      \field{sortinithash}{c26a05ef03e4429073ed5c825140fac3}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Communications of the ACM}
+      \field{number}{4}
+      \field{title}{Recursive functions of symbolic expressions and their computation by machine, Part I}
+      \field{volume}{3}
+      \field{year}{1960}
+      \field{pages}{184\bibrangedash 195}
+      \range{pages}{12}
+    \endentry
+  \endsortlist
+\endrefsection
+\endinput
+
