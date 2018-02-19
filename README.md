@@ -12,6 +12,15 @@ Other branches were used for experimentation, or comparison against the version 
 
 Noteworthy hack: to get the linker to include my assembly trampoline I run `ninja`, which will fail when linking. Then run the command saved in `linker_command.txt`.
 
+Note that this was configured to run under the CL mphil machines with clang/LLVM/Ninja set up beforehand. Getting it all to run independently again might be a bit of a challenge.
+
+Building on own computer instructions (excerpt from http://www.cl.cam.ac.uk/teaching/1718/L25/Exercises.pdf)
+
+> If you are using your own machine, then please use the scripts in
+> https://github.com/compilerteaching/Scripts to set up LLVM and the
+> examples.  You will need to modify the line that sets INSTALL PREFIX in the setup llvm.sh script.  Note that using your own machine will require around 30GB of free disk space for debug and release builds of LLVM (the lab machines have these in a shared NFS space)
+> 
+> You will need to have libedit and the Boehm Garbage Collector (including associated headers), and a working C++14 toolchain, installed before running the scripts.
 
 MysoreScript
 ============
