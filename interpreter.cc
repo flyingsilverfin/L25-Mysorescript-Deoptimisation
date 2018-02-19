@@ -2,6 +2,7 @@
 #include <iostream>
 #include "parser.hh"
 #include "SMRecordParser.cpp"
+#include <ctime>
 
 #ifdef DEBUG 
 #define D(x) x
@@ -928,12 +929,16 @@ Obj ClosureDecl::interpretClosure(Interpreter::Context &c, Closure *self,
 	// If we've interpreted this enough times, compile it.
 	if (forceCompiler || (executionCount == compileThreshold) || recompile)
 	{
+		auto start = clock();
 		// Note that we don't pass any symbols other than the globals into the
 		// compiler, because all of the bound variables are already copied into
 		// the closure object when it is created.
 		self->invoke = compileClosure(c.globalSymbols);
 		compiledClosure = self->invoke;
 		recompile = false;
+		clock_t end = clock();
+		double elapsed_secs = double(end - start) / CLOCKS_PER_SEC;
+		std::cerr << "Time to compile closure: " << elapsed_secs << std::endl;
 	}
 	// If we now have a compiled version, call it
 	if (compiledClosure)
