@@ -5,6 +5,10 @@ Original source from https://github.com/CompilerTeaching/MysoreScript
 # Implementation
 I have included JIT deoptimisation support on the method granularity. There are several limitations, for instance that side exits be on statement boundaries (no partial expression values are transferred from JIT to interpreter). In practice this would mean restricting oneself to SSA-like code.
 
+Most of the work is under the `project` branch.
+Other branches were used for experimentation, or comparison against the version using deoptimisation. (TODO cleanup tmp/stashes)
+
+Noteworthy hack: to get the linker to include my assembly trampoline I run `ninja`, which will fail when linking. Then run the command saved in `linker_command.txt`.
 
 
 MysoreScript
